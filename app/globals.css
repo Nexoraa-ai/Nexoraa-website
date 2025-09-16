@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0f1a;
+  --fg: #e5e7eb;
+}
+
+html, body, #__next { height: 100%; }
+
+body {
+  /* Unified, single-page background: subtle grid + aurora glows, fixed. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 700px at 50% -10%, rgba(124,77,255,0.18) 0%, rgba(124,77,255,0.00) 65%),
+    radial-gradient(900px 600px at 100% 0%, rgba(0,240,255,0.12) 0%, rgba(0,240,255,0.00) 65%),
+    radial-gradient(1000px 700px at 0% 25%, rgba(0,136,255,0.10) 0%, rgba(0,136,255,0.00) 65%),
+    radial-gradient(1200px 800px at 50% 120%, rgba(0,0,0,0.50) 0%, rgba(0,0,0,0.00) 70%),
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,0.045) 1px, rgba(0,0,0,0) 1px);
+  background-size: auto, auto, auto, auto, 24px 24px;
+  background-attachment: fixed, fixed, fixed, fixed, fixed;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+  color: var(--fg);
+}
+
+/* Legacy helper kept for compatibility, but without masking to avoid edges */
+.grid-bg {
+  background-image: radial-gradient(circle at 1px 1px, rgba(124,77,255,0.20) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.neon-text {
+  text-shadow: 0 0 12px rgba(0,240,255,0.6), 0 0 24px rgba(124,77,255,0.35);
+}
+
+@keyframes dash {
+  to { stroke-dashoffset: -1000; }
+}
+.animate-dash { stroke-dasharray: 8 10; stroke-dashoffset: 0; animation: dash 6s linear infinite; }
+.delay-200 { animation-delay: .2s; }
+.delay-400 { animation-delay: .4s; }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(124,77,255,0.0); }
+  50% { box-shadow: 0 0 20px rgba(0,240,255,0.4); }
+}
+.animate-pulse-glow { animation: pulse-glow 2.2s ease-in-out infinite; }
+
+/* Subtle aurora movement used in navbar/hero decorative blobs */
+@keyframes aurora-move {
+  0%   { transform: translateX(-15%) translateY(0) scale(1); }
+  50%  { transform: translateX(15%) translateY(-4%) scale(1.05); }
+  100% { transform: translateX(-15%) translateY(0) scale(1); }
+}
+.animate-aurora { animation: aurora-move 12s ease-in-out infinite; }
+.animate-aurora-slow { animation: aurora-move 18s ease-in-out infinite; }
