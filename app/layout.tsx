@@ -9,12 +9,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Nexoraa',
     description: 'Intelligent automation across industries — secure, scalable, auditable.',
-    type: 'website'
+    type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Nexoraa',
-    description: 'Productized AI playbooks and automations that drive ROI.'
+    description: 'Productized AI playbooks and automations that drive ROI.',
   }
 }
 
