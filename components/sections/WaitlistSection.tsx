@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 export default function WaitlistSection() {
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [role, setRole] = useState('')
@@ -12,6 +13,7 @@ export default function WaitlistSection() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    setError('')
     
     try {
       const res = await fetch('/api/waitlist', {
@@ -23,11 +25,12 @@ export default function WaitlistSection() {
       if (res.ok) {
         setSent(true)
       } else {
-        alert('Something went wrong. Please try again.')
+        const data = await res.json().catch(() => null)
+        setError(data?.error || 'Something went wrong. Please try again.')
       }
     } catch (err) {
       console.error(err)
-      alert('An error occurred. Please try again.')
+      setError('An error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -46,7 +49,7 @@ export default function WaitlistSection() {
           className="font-mono text-[10px] tracking-[0.18em] uppercase text-[#7c6df8] mb-4 flex items-center justify-center gap-2.5"
         >
           <span className="w-6 h-px bg-[#7c6df8] inline-block" />
-          Early Access · Limited Spots
+          Automation Pilot · Limited Slots
           <span className="w-6 h-px bg-[#7c6df8] inline-block" />
         </motion.div>
 
@@ -57,9 +60,9 @@ export default function WaitlistSection() {
           transition={{ delay: 0.1 }}
           className="text-[clamp(28px,5vw,52px)] font-black leading-[1.05] tracking-[-0.03em] mb-4 text-white"
         >
-          Be first on{' '}
+          Start building with{' '}
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#7c6df8] to-[#00d4ff]">
-            NeuralForge
+            Nexoraa
           </span>
         </motion.h2>
 
@@ -70,7 +73,7 @@ export default function WaitlistSection() {
           transition={{ delay: 0.2 }}
           className="text-[15px] text-[#565775] leading-relaxed max-w-[540px] mx-auto mb-10"
         >
-          Join 500+ developers, students, and founders on the waitlist for India&apos;s only unified AI Work OS — news, learning, challenges, competitions, agents, and verified freelance in one account.
+          Tell us where manual work is slowing the business down. We&apos;ll help you scope a secure AI automation pilot with measurable ROI.
         </motion.p>
 
         <motion.div
@@ -117,12 +120,17 @@ export default function WaitlistSection() {
                 className="w-full bg-[#13141f] border border-[#2a2b40] rounded-xl px-4 py-3 text-sm text-[#8e8fa6] outline-none mb-4 transition-colors focus:border-[#7c6df8] focus:bg-[#191a28] appearance-none relative z-10"
               >
                 <option value="">I am a... (select role)</option>
-                <option value="CS Student / Fresher">CS Student / Fresher</option>
-                <option value="Working ML / AI Engineer">Working ML / AI Engineer</option>
-                <option value="Career Switcher">Career Switcher</option>
-                <option value="Startup / SMB">Startup / SMB (want AI agents)</option>
-                <option value="Enterprise L&D / HR Head">Enterprise L&D / HR Head</option>
+                <option value="Corporate Operations">Corporate Operations</option>
+                <option value="Home Services">Home Services</option>
+                <option value="Healthcare">Healthcare</option>
+                <option value="Financial Services">Financial Services</option>
+                <option value="Startup / SMB">Startup / SMB</option>
               </select>
+              {error && (
+                <p className="relative z-10 mb-4 rounded-lg border border-[#f74470]/30 bg-[#f74470]/10 px-3 py-2 text-center text-xs text-[#ff9ab0]">
+                  {error}
+                </p>
+              )}
               
               <div className="relative z-10 w-full flex justify-center">
                 <button
@@ -136,14 +144,14 @@ export default function WaitlistSection() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Joining...
+                      Sending...
                     </span>
-                  ) : 'Join the Waitlist →'}
+                  ) : 'Request a Pilot →'}
                 </button>
               </div>
               
               <p className="text-[11px] text-[#565775] mt-4 text-center relative z-10">
-                No spam. Early access guaranteed for waitlist members. By submitting you agree to our privacy policy.
+                No spam. We use your details only to follow up about the automation pilot.
               </p>
             </form>
           )}
@@ -158,10 +166,10 @@ export default function WaitlistSection() {
           className="mt-10 flex justify-center gap-8 md:gap-12 flex-wrap"
         >
           {[
-            { n: '500+', l: 'On Waitlist' },
-            { n: '₹0', l: 'To Join' },
-            { n: 'Apr 30', l: 'Beta Launch' },
-          ].map((s, i) => (
+            { n: '4', l: 'Business Units' },
+            { n: '24h', l: 'Initial Reply' },
+            { n: 'ROI', l: 'Measured Pilots' },
+          ].map((s) => (
             <div key={s.l} className="text-center">
               <div className="font-mono text-xl font-bold text-[#7c6df8] mb-1">{s.n}</div>
               <div className="text-[11px] text-[#565775] uppercase tracking-[0.08em]">{s.l}</div>

@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 
@@ -29,14 +30,14 @@ export default function Navbar() {
     >
       <div className={`max-w-[1400px] mx-auto px-6 md:px-12 flex items-center justify-between transition-all duration-300 ${scrolled ? 'h-16' : 'h-24'}`}>
         {/* Logo */}
-        <a href="/" className="flex items-center gap-2.5 no-underline group">
+        <Link href="/" className="flex items-center gap-2.5 no-underline group">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7c6df8] to-[#00d4ff] flex items-center justify-center text-base font-black text-white shadow-[0_0_16px_rgba(124,109,248,0.4)] transition-transform group-hover:scale-105">
             N
           </div>
           <span className="text-lg font-extrabold tracking-[-0.03em] bg-gradient-to-r from-[#7c6df8] to-[#00d4ff] bg-clip-text text-transparent">
-            NeuralForge
+            Nexoraa
           </span>
-        </a>
+        </Link>
 
         {/* Desktop nav - Floating Dock style */}
         <nav className="hidden md:flex items-center gap-1 p-1 rounded-full border border-white/5 bg-black/20 backdrop-blur-md">
@@ -73,7 +74,7 @@ export default function Navbar() {
               href="#waitlist"
               className="px-5 py-2 rounded-xl text-[13px] font-bold text-white bg-gradient-to-r from-[#7c6df8] to-[#00d4ff] hover:opacity-90 transition-opacity"
             >
-              Join Waitlist
+              Start a Project
             </a>
           </div>
 
@@ -102,7 +103,7 @@ export default function Navbar() {
             </a>
           ))}
           <a href="#waitlist" onClick={() => setMobileOpen(false)} className="mt-2 px-3 py-3 rounded-lg bg-[#7c6df8] text-white text-sm font-bold text-center">
-            Join Waitlist
+            Start a Project
           </a>
         </motion.div>
       )}
