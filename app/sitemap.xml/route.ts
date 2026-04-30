@@ -1,9 +1,10 @@
 import { units } from '@/content/units'
 import { cases } from '@/content/cases'
 import { posts } from '@/content/blog'
+import { getSiteUrl } from '@/lib/site'
 
 export function GET() {
-  const base = 'https://nexoraa.example'
+  const base = getSiteUrl().origin
   const now = new Date().toISOString()
   const urls = [
     '/',

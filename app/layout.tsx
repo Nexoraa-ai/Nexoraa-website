@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { getSiteUrl } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'Nexoraa — Intelligent Automation, Productized',
   description: 'Nexoraa builds secure, scalable, and auditable AI automations across Corporate Core, TradeSync, HealthTrust, and FinSecure.',
-  metadataBase: new URL('https://nexoraa.example'),
+  metadataBase: getSiteUrl(),
   openGraph: {
     title: 'Nexoraa',
     description: 'Intelligent automation across industries — secure, scalable, auditable.',
