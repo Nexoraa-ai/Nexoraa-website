@@ -2,22 +2,19 @@ import { NextResponse } from 'next/server'
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+    const body = await req.json() as Partial<Record<'name' | 'email' | 'role', string>>
     const { name, email, role } = body
+    const trimmedName = name?.trim()
+    const trimmedEmail = email?.trim().toLowerCase()
+    const trimmedRole = role?.trim()
 
-    if (!name || !email || !role) {
+    if (!trimmedName || !trimmedEmail || !trimmedRole) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // TODO: Connect to your actual database (Supabase, Resend, etc.) here
-    console.log('--- NEW WAITLIST SIGNUP ---')
-    console.log(`Name:  ${name}`)
-    console.log(`Email: ${email}`)
-    console.log(`Role:  ${role}`)
-    console.log('---------------------------')
-
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 800))
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
+    }
 
     return NextResponse.json({ success: true, message: 'Added to waitlist' }, { status: 200 })
   } catch (error) {

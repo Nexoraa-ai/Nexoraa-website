@@ -4,6 +4,7 @@ node_modules
 # Next.js
 .next
 out
+tsconfig.tsbuildinfo
 
 # Logs
 npm-debug.log*
@@ -13,3 +14,6 @@ pnpm-debug.log*
 
 # Env
 .env*
+
+# Local Codex/session metadata
+.codex

@@ -6,14 +6,20 @@ export function generateStaticParams() {
   return posts.map(p => ({ slug: p.slug }))
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const p = postBySlug(params.slug)
+type BlogPostPageProps = {
+  params: Promise<{ slug: string }>
+}
+
+export async function generateMetadata({ params }: BlogPostPageProps) {
+  const { slug } = await params
+  const p = postBySlug(slug)
   if (!p) return {}
   return { title: `${p.title} — Nexoraa`, description: p.summary }
 }
 
-export default function BlogPostPage({ params }: { params: { slug: string } }) {
-  const p = postBySlug(params.slug)
+export default async function BlogPostPage({ params }: BlogPostPageProps) {
+  const { slug } = await params
+  const p = postBySlug(slug)
   if (!p) return notFound()
 
   return (

@@ -92,4 +92,4 @@ export const units: Unit[] = [
   },
 ]
 
-export const unitBySlug = (slug: Unit['slug']) => units.find(u => u.slug === slug)
+export const unitBySlug = (slug: string) => units.find(u => u.slug === slug)

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { cn } from "@/lib/utils";
@@ -15,10 +15,8 @@ if (typeof window !== "undefined") {
 // 1. THEME-ADAPTIVE INLINE STYLES
 // -------------------------------------------------------------------------
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap');
-
 .cinematic-footer-wrapper {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: var(--font-outfit);
   -webkit-font-smoothing: antialiased;
   
   /* Dynamic Variables using standard shadcn/tailwind v4 tokens */
@@ -139,7 +137,9 @@ export type MagneticButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> 
 
 const MagneticButton = React.forwardRef<HTMLElement, MagneticButtonProps>(
   ({ className, children, as: Component = "button", ...props }, forwardedRef) => {
-    const localRef = useRef<HTMLElement>(null);
+    const localRef = useRef<HTMLElement | null>(null);
+
+    useImperativeHandle(forwardedRef, () => localRef.current as HTMLElement);
 
     useEffect(() => {
       if (typeof window === "undefined") return;
@@ -177,11 +177,11 @@ const MagneticButton = React.forwardRef<HTMLElement, MagneticButtonProps>(
           });
         };
 
-        element.addEventListener("mousemove", handleMouseMove as any);
+        element.addEventListener("mousemove", handleMouseMove);
         element.addEventListener("mouseleave", handleMouseLeave);
 
         return () => {
-          element.removeEventListener("mousemove", handleMouseMove as any);
+          element.removeEventListener("mousemove", handleMouseMove);
           element.removeEventListener("mouseleave", handleMouseLeave);
         };
       }, element);
@@ -191,10 +191,9 @@ const MagneticButton = React.forwardRef<HTMLElement, MagneticButtonProps>(
 
     return (
       <Component
-        ref={(node: HTMLElement) => {
-          (localRef as any).current = node;
+        ref={(node: HTMLElement | null) => {
+          localRef.current = node;
           if (typeof forwardedRef === "function") forwardedRef(node);
-          else if (forwardedRef) (forwardedRef as any).current = node;
         }}
         className={cn("cursor-pointer", className)}
         {...props}
@@ -211,11 +210,11 @@ MagneticButton.displayName = "MagneticButton";
 // -------------------------------------------------------------------------
 const MarqueeItem = () => (
   <div className="flex items-center space-x-12 px-6">
-    <span>AI News Hub</span> <span className="text-primary/60">✦</span>
-    <span>Browser Labs</span> <span className="text-secondary/60">✦</span>
-    <span>Hackathons</span> <span className="text-primary/60">✦</span>
-    <span>Agent Workforce</span> <span className="text-secondary/60">✦</span>
-    <span>Global Network</span> <span className="text-primary/60">✦</span>
+    <span>Corporate Core</span> <span className="text-primary/60">✦</span>
+    <span>TradeSync</span> <span className="text-secondary/60">✦</span>
+    <span>HealthTrust</span> <span className="text-primary/60">✦</span>
+    <span>FinSecure</span> <span className="text-secondary/60">✦</span>
+    <span>Automation ROI</span> <span className="text-primary/60">✦</span>
   </div>
 );
 
@@ -360,7 +359,7 @@ export function CinematicFooter() {
             
             {/* Copyright */}
             <div className="text-muted-foreground text-[10px] md:text-xs font-semibold tracking-widest uppercase order-2 md:order-1">
-              © 2026 NeuralForge. All rights reserved.
+              © 2026 Nexoraa. All rights reserved.
             </div>
 
             {/* "Made with Love" Badge */}
@@ -368,7 +367,7 @@ export function CinematicFooter() {
               <span className="text-muted-foreground text-[10px] md:text-xs font-bold uppercase tracking-widest">Crafted with</span>
               <span className="animate-footer-heartbeat text-sm md:text-base text-destructive">❤</span>
               <span className="text-muted-foreground text-[10px] md:text-xs font-bold uppercase tracking-widest">by</span>
-              <span className="text-foreground font-black text-xs md:text-sm tracking-normal ml-1">NeuralForge</span>
+              <span className="text-foreground font-black text-xs md:text-sm tracking-normal ml-1">Nexoraa</span>
             </div>
 
             {/* Back to top */}

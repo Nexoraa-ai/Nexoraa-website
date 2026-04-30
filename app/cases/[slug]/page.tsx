@@ -6,14 +6,20 @@ export function generateStaticParams() {
   return cases.map(c => ({ slug: c.slug }))
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const cs = caseBySlug(params.slug)
+type CasePageProps = {
+  params: Promise<{ slug: string }>
+}
+
+export async function generateMetadata({ params }: CasePageProps) {
+  const { slug } = await params
+  const cs = caseBySlug(slug)
   if (!cs) return {}
   return { title: `${cs.title} — Nexoraa`, description: cs.summary }
 }
 
-export default function CasePage({ params }: { params: { slug: string } }) {
-  const cs = caseBySlug(params.slug)
+export default async function CasePage({ params }: CasePageProps) {
+  const { slug } = await params
+  const cs = caseBySlug(slug)
   if (!cs) return notFound()
 
   return (
@@ -26,7 +32,7 @@ export default function CasePage({ params }: { params: { slug: string } }) {
         {cs.metrics.map(m => <li key={m}>{m}</li>)}
       </ul>
       <div className="mt-10">
-        <a href="/" className="rounded-md ring-1 ring-white/15 px-4 py-2">Back to Home</a>
+        <Link href="/" className="rounded-md ring-1 ring-white/15 px-4 py-2">Back to Home</Link>
       </div>
     </main>
   )

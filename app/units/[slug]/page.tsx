@@ -7,8 +7,13 @@ export function generateStaticParams() {
   return units.map(u => ({ slug: u.slug }))
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const unit = unitBySlug(params.slug as any)
+type UnitPageProps = {
+  params: Promise<{ slug: string }>
+}
+
+export async function generateMetadata({ params }: UnitPageProps) {
+  const { slug } = await params
+  const unit = unitBySlug(slug)
   if (!unit) return {}
   return {
     title: `${unit.title} — Nexoraa`,
@@ -16,8 +21,9 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 }
 
-export default function UnitPage({ params }: { params: { slug: string } }) {
-  const unit = unitBySlug(params.slug as any)
+export default async function UnitPage({ params }: UnitPageProps) {
+  const { slug } = await params
+  const unit = unitBySlug(slug)
   if (!unit) return notFound()
 
   return (

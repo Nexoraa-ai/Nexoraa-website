@@ -1,14 +1,9 @@
-import { Suspense } from 'react'
-
 export const metadata = {
   title: 'Contact — Nexoraa',
   description: 'Start a conversation with Nexoraa about high-ROI automations.'
 }
 
-function ContactFormInner() {
-  const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  const unit = params.get('unit') || ''
-  const topic = params.get('topic') || ''
+function ContactFormInner({ unit, topic }: { unit: string; topic: string }) {
   const preset = unit || topic ? `Unit: ${unit}\nTopic: ${topic}\n\n` : ''
 
   return (
@@ -28,14 +23,22 @@ function ContactFormInner() {
   )
 }
 
-export default function ContactPage() {
+type ContactPageProps = {
+  searchParams?: Promise<{ unit?: string; topic?: string }>
+}
+
+export default async function ContactPage({
+  searchParams,
+}: ContactPageProps) {
+  const resolvedSearchParams = await searchParams
+  const unit = resolvedSearchParams?.unit || ''
+  const topic = resolvedSearchParams?.topic || ''
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
       <h1 className="text-3xl md:text-5xl font-semibold text-white">Start a conversation</h1>
       <p className="mt-3 text-zinc-300">Tell us about your stack and bottlenecks. We’ll follow up within 24 hours.</p>
-      <Suspense>
-        <ContactFormInner />
-      </Suspense>
+      <ContactFormInner unit={unit} topic={topic} />
     </main>
   )
 }

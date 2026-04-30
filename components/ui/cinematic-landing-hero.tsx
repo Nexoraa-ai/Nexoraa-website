@@ -52,6 +52,14 @@ const INJECTED_STYLES = `
           drop-shadow(0px 2px 4px color-mix(in srgb, var(--color-foreground) 10%, transparent));
   }
 
+  .hero-tagline-secondary {
+      color: #F8FBFF;
+      text-shadow:
+          0 18px 42px rgba(0, 0, 0, 0.7),
+          0 8px 18px rgba(0, 31, 92, 0.45),
+          0 0 26px rgba(124, 109, 248, 0.32);
+  }
+
   /* INSIDE THE CARD: Hardcoded Silver/White for the dark background, deep rich shadows */
   .text-card-silver-matte {
       background: linear-gradient(180deg, #FFFFFF 0%, #A1A1AA 100%);
@@ -313,10 +321,10 @@ export function CinematicHero({
 
       {/* BACKGROUND LAYER: Hero Texts */}
       <div className="hero-text-wrapper absolute z-10 flex flex-col items-center justify-center text-center w-screen px-4 will-change-transform transform-style-3d">
-        <h1 className="text-track gsap-reveal text-3d-matte text-5xl md:text-7xl lg:text-[6rem] font-bold tracking-tight mb-2">
+        <h1 className="text-track gsap-reveal text-3d-matte max-w-[min(92vw,1100px)] text-[clamp(3rem,7vw,6rem)] font-bold tracking-tight leading-[0.95] mb-2">
           {tagline1}
         </h1>
-        <h1 className="text-days gsap-reveal text-silver-matte text-5xl md:text-7xl lg:text-[6rem] font-extrabold tracking-tighter">
+        <h1 className="text-days gsap-reveal hero-tagline-secondary max-w-[min(92vw,1120px)] text-[clamp(2.75rem,6.6vw,5.75rem)] font-extrabold tracking-tight leading-[0.98]">
           {tagline2}
         </h1>
       </div>

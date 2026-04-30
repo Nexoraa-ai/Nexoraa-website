@@ -1,13 +1,9 @@
 import Link from 'next/link'
 import { posts } from '@/content/blog'
-import { Suspense } from 'react'
 
 export const metadata = { title: 'Blog — Nexoraa', description: 'Notes, patterns, and playbooks from Nexoraa.' }
 
-function BlogListing() {
-  const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  const tag = params.get('tag') || 'all'
-  const page = Math.max(1, parseInt(params.get('page') || '1', 10))
+function BlogListing({ tag, page }: { tag: string; page: number }) {
   const pageSize = 6
   const allTags = Array.from(new Set(posts.flatMap(p => p.tags)))
   const tags = ['all', ...allTags]
@@ -46,14 +42,24 @@ function BlogListing() {
   )
 }
 
-export default function BlogPage() {
+type BlogPageProps = {
+  searchParams?: Promise<{ tag?: string; page?: string }>
+}
+
+export default async function BlogPage({
+  searchParams,
+}: BlogPageProps) {
+  const resolvedSearchParams = await searchParams
+  const allTags = new Set(posts.flatMap(p => p.tags))
+  const requestedTag = resolvedSearchParams?.tag || 'all'
+  const tag = requestedTag === 'all' || allTags.has(requestedTag) ? requestedTag : 'all'
+  const page = Math.max(1, Number.parseInt(resolvedSearchParams?.page || '1', 10) || 1)
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
       <h1 className="text-3xl md:text-5xl font-semibold text-white">Blog</h1>
       <p className="mt-4 text-zinc-300 max-w-3xl">Notes, patterns, and playbooks from the field.</p>
-      <Suspense>
-        <BlogListing />
-      </Suspense>
+      <BlogListing tag={tag} page={page} />
     </main>
   )
 }

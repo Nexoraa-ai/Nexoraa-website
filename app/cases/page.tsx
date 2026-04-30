@@ -1,24 +1,24 @@
 import Link from 'next/link'
 import { cases } from '@/content/cases'
-import { Suspense } from 'react'
+import type { Case } from '@/content/cases'
 
 export const metadata = {
   title: 'Case Studies — Nexoraa',
   description: 'Selected outcomes and wins across Nexoraa business units.'
 }
 
-function CasesListing() {
-  const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  const tag = params.get('tag') || 'all'
-  const page = Math.max(1, parseInt(params.get('page') || '1', 10))
+const tags = ['all', 'corporate-core', 'tradesync', 'healthtrust', 'finsecure'] as const
+type CaseTag = typeof tags[number]
+
+const isCaseTag = (tag: string): tag is CaseTag => tags.includes(tag as CaseTag)
+
+function CasesListing({ tag, page }: { tag: CaseTag; page: number }) {
   const pageSize = 6
 
-  const filtered = tag === 'all' ? cases : cases.filter(c => [c.unit].includes(tag as any))
+  const filtered = tag === 'all' ? cases : cases.filter((c: Case) => c.unit === tag)
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const start = (page - 1) * pageSize
   const list = filtered.slice(start, start + pageSize)
-
-  const tags = ['all', 'corporate-core', 'tradesync', 'healthtrust', 'finsecure']
 
   return (
     <>
@@ -49,14 +49,23 @@ function CasesListing() {
   )
 }
 
-export default function CasesPage() {
+type CasesPageProps = {
+  searchParams?: Promise<{ tag?: string; page?: string }>
+}
+
+export default async function CasesPage({
+  searchParams,
+}: CasesPageProps) {
+  const resolvedSearchParams = await searchParams
+  const requestedTag = resolvedSearchParams?.tag || 'all'
+  const tag = isCaseTag(requestedTag) ? requestedTag : 'all'
+  const page = Math.max(1, Number.parseInt(resolvedSearchParams?.page || '1', 10) || 1)
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-16">
       <h1 className="text-3xl md:text-5xl font-semibold text-white">Case Studies</h1>
       <p className="mt-4 text-zinc-300 max-w-3xl">Explore selected outcomes across Corporate Core, TradeSync, HealthTrust, and FinSecure.</p>
-      <Suspense>
-        <CasesListing />
-      </Suspense>
+      <CasesListing tag={tag} page={page} />
     </main>
   )
 }

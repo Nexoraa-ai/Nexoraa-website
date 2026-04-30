@@ -35,12 +35,12 @@ interface CardDef {
 }
 
 const CARDS: CardDef[] = [
-  { x: 80, y: 80, w: 480, h: 280, kind: "chart", hue: 220, label: "AI News" },
-  { x: 600, y: 80, w: 280, h: 280, kind: "counter", hue: 280, label: "Browser Labs" },
+  { x: 80, y: 80, w: 480, h: 280, kind: "chart", hue: 220, label: "Process Mining" },
+  { x: 600, y: 80, w: 280, h: 280, kind: "counter", hue: 280, label: "Ops Playbooks" },
   { x: 920, y: 80, w: 360, h: 180, kind: "gradient", hue: 200 },
   { x: 1320, y: 80, w: 480, h: 280, kind: "code", hue: 0, label: "agent.ts" },
   { x: 1840, y: 80, w: 280, h: 280, kind: "logo", hue: 320 },
-  { x: 2160, y: 80, w: 380, h: 180, kind: "stat", hue: 160, label: "Hackathons" },
+  { x: 2160, y: 80, w: 380, h: 180, kind: "stat", hue: 160, label: "Automations" },
   { x: 2580, y: 80, w: 360, h: 280, kind: "bars", hue: 40, label: "Challenges" },
   { x: 920, y: 300, w: 360, h: 200, kind: "counter", hue: 180, label: "Users" },
   {
@@ -493,9 +493,11 @@ export function InfiniteBentoPan({
           willChange: "transform",
         }}
       >
-        {CARDS.map((c, i) => (
-          <Card key={i} card={c} accent={accentColor} index={i} frame={frame} />
-        ))}
+        {elapsed > 0
+          ? CARDS.map((c, i) => (
+              <Card key={i} card={c} accent={accentColor} index={i} frame={frame} />
+            ))
+          : null}
       </div>
       <div
         style={{
