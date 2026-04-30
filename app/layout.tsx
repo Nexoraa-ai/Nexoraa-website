@@ -1,19 +1,20 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { getSiteUrl } from '@/lib/site'
 
 export const metadata: Metadata = {
-  title: 'NeuralForge — India\'s AI Work OS',
-  description: 'The only platform where you stay current with AI, learn it hands-on, prove it in competitions, deploy AI agents as employees, and get hired for it — all in one account.',
-  metadataBase: new URL('https://neuralforge.in'),
+  title: 'Nexoraa — Intelligent Automation, Productized',
+  description: 'Nexoraa builds secure, scalable, and auditable AI automations across Corporate Core, TradeSync, HealthTrust, and FinSecure.',
+  metadataBase: getSiteUrl(),
   openGraph: {
-    title: 'NeuralForge — India\'s AI Work OS',
-    description: 'AIPulse × NeuralForge: 7-layer AI Work OS for India\'s 5.8M developers. News · Learn · Build · Compete · Community · Deploy · Reward.',
+    title: 'Nexoraa',
+    description: 'Intelligent automation across industries — secure, scalable, auditable.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'NeuralForge — India\'s AI Work OS',
-    description: 'Stay current. Learn AI. Compete. Deploy agents. Get hired. All in one platform.',
+    title: 'Nexoraa',
+    description: 'Productized AI playbooks and automations that drive ROI.',
   }
 }
 

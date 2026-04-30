@@ -23,7 +23,7 @@ npm run build
 npm start
 ```
 
-Outputs a standalone server (output=standalone) suitable for any platform (Docker, VM, Fly.io, Render, Railway, Vercel, Netlify with adapter, etc.).
+Outputs a standalone server (`output=standalone`) suitable for any platform (Docker, VM, Fly.io, Render, Railway, Vercel, Netlify with adapter, etc.).
 
 ## Tech
 - Next.js 14 (App Router)
@@ -33,10 +33,15 @@ Outputs a standalone server (output=standalone) suitable for any platform (Docke
 ## Content structure
 - Business units: Corporate Core, TradeSync, HealthTrust, FinSecure
 - Approach: Process Mining, Productized Solutions, Continuous Optimization
-- Contact: Simple form (replace endpoint as needed)
+- Contact: Uses `https://formsubmit.co` by default (replace with your own endpoint as needed)
 
 ## Customize
 - Update brand colors in `tailwind.config.ts`
 - Edit copy in `app/page.tsx`
-- Add assets (vectors/gifs) in `public/` and reference via `/...`# Nexoraa-website
-Nexoraa is a specialized AI agency that deploys intelligent automation across core business functions. We build bespoke solutions for specific industry needs, turning operational friction into streamlined, data-driven workflows. Our work is built on secure, scalable, and auditable AI systems designed to drive tangible ROI. 
+- Add assets (vectors/gifs) in `public/` and reference via `/...`
+
+## Contact form endpoint
+Both homepage and `/contact` currently submit to `https://formsubmit.co`.
+To use your own backend/API route, update each form `action` value in:
+- `app/page.tsx`
+- `app/contact/page.tsx`
