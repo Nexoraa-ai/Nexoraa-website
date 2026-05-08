@@ -1,0 +1,69 @@
+{
+  "name": "L0_08 Daily Digest Email (Resend)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "l0-digest-email",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Render digest email HTML using NeuralForge design tokens\nconst payload = $input.first().json.body;\nconst clusters = payload.clusters || [];\n\nconst categoryColors = {\n  model_release: '#00d4ff',\n  tool_launch: '#35d97a',\n  research_paper: '#7c6df8',\n  funding: '#f5c842',\n  security: '#f74470',\n  tutorial: '#f7a435',\n  regulation: '#a855f7',\n  opinion: '#565775'\n};\n\nconst itemsHtml = clusters.map(c => `\n  <div style=\"margin-bottom:20px;padding:16px;background:#0e0f18;border-radius:12px;border-left:3px solid ${categoryColors[c.category] || '#565775'}\">\n    <div style=\"display:flex;align-items:center;gap:8px;margin-bottom:8px;\">\n      <span style=\"font-family:monospace;font-size:10px;color:${categoryColors[c.category]};font-weight:700;padding:2px 8px;background:${categoryColors[c.category]}18;border-radius:100px\">${c.category.replace('_',' ')}</span>\n      <span style=\"font-family:monospace;font-size:10px;color:#565775\">P${c.priority_score}</span>\n      ${c.item_count > 1 ? `<span style=\"font-family:monospace;font-size:10px;color:#565775;margin-left:auto\">${c.item_count} sources</span>` : ''}\n    </div>\n    <h3 style=\"font-family:Outfit,sans-serif;font-size:15px;font-weight:600;color:#e8e9f5;margin:0 0 8px;line-height:1.4\">${c.title}</h3>\n    <p style=\"font-family:Outfit,sans-serif;font-size:13px;color:#8587a8;line-height:1.6;margin:0\">${(c.summary || '').slice(0, 250)}${c.summary?.length > 250 ? '…' : ''}</p>\n  </div>\n`).join('');\n\nconst html = `\n<!DOCTYPE html>\n<html>\n<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>\n<body style=\"margin:0;padding:0;background:#08090e;font-family:Outfit,ui-sans-serif,system-ui,sans-serif\">\n  <div style=\"max-width:600px;margin:0 auto;padding:24px 16px\">\n    <div style=\"margin-bottom:24px\">\n      <span style=\"font-family:monospace;font-size:11px;font-weight:700;color:#00d4ff;letter-spacing:0.15em;text-transform:uppercase\">NeuralForge</span>\n      <h1 style=\"font-size:20px;font-weight:800;color:#e8e9f5;margin:8px 0 4px\">Your Daily AI Digest</h1>\n      <p style=\"font-size:13px;color:#565775;margin:0\">Top ${clusters.length} AI developments — ${new Date().toLocaleDateString('en-IN', { weekday: 'long', month: 'long', day: 'numeric' })}</p>\n    </div>\n    ${itemsHtml}\n    <div style=\"margin-top:24px;padding-top:16px;border-top:1px solid #1e1f30\">\n      <p style=\"font-size:11px;color:#383960;text-align:center;margin:0\">NeuralForge · <a href=\"{{unsubscribe_url}}\" style=\"color:#565775\">Unsubscribe</a></p>\n    </div>\n  </div>\n</body>\n</html>`;\n\nreturn [{ json: {\n  user_id: payload.user_id,\n  user_email: payload.user_email,\n  html,\n  cluster_ids: clusters.map(c => c.id)\n}}];"
+      },
+      "id": "render-html",
+      "name": "Render Email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.RESEND_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: 'NeuralForge <digest@neuralforge.io>', to: [$json.user_email], subject: '⚡ Your Daily AI Digest', html: $json.html }) }}"
+      },
+      "id": "send-email",
+      "name": "Send via Resend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO digest_sends (user_id, cluster_ids, resend_id) VALUES ($1, $2::uuid[], $3)",
+        "additionalFields": {
+          "queryParams": "={{ [$('Render Email HTML').first().json.user_id, '{' + $('Render Email HTML').first().json.cluster_ids.join(',') + '}', $json.id] }}"
+        }
+      },
+      "id": "log-send",
+      "name": "Log Digest Send",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [840, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Render Email HTML", "type": "main", "index": 0 }]] },
+    "Render Email HTML": { "main": [[{ "node": "Send via Resend", "type": "main", "index": 0 }]] },
+    "Send via Resend": { "main": [[{ "node": "Log Digest Send", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

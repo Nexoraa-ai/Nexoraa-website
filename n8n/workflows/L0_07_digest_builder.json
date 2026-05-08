@@ -1,0 +1,83 @@
+{
+  "name": "L0_07 Daily Digest Builder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "30 12 * * *" }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (12:30 UTC = 6pm IST)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT up.id, up.preferred_level, up.selected_verticals, u.email FROM user_profiles up JOIN auth.users u ON u.id = up.id WHERE up.digest_enabled = true AND u.email IS NOT NULL"
+      },
+      "id": "fetch-users",
+      "name": "Fetch Digest Users",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 50,
+        "options": {}
+      },
+      "id": "batch-users",
+      "name": "Batch Users (50 at a time)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT cluster_id, canonical_title, category, priority_score, item_count, first_seen_at, summary_beginner, summary_intermediate, summary_expert, vertical_panels FROM get_feed(p_user_id => $1::uuid, p_min_priority => 50, p_limit => 5)",
+        "additionalFields": { "queryParams": "={{ [$json.id] }}" }
+      },
+      "id": "personalized-feed",
+      "name": "Get Personalized Feed (5 items)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build digest email payload for this user\nconst user = $('Batch Users (50 at a time)').first().json;\nconst feedItems = $input.all().map(i => i.json);\n\nif (feedItems.length === 0) return [];\n\nconst level = user.preferred_level || 'beginner';\nconst summaryKey = `summary_${level}`;\n\nreturn [{ json: {\n  user_id: user.id,\n  user_email: user.email,\n  preferred_level: level,\n  clusters: feedItems.map(item => ({\n    id: item.cluster_id,\n    title: item.canonical_title,\n    category: item.category,\n    priority_score: item.priority_score,\n    item_count: item.item_count,\n    summary: item[summaryKey] || item.summary_beginner\n  }))\n}}];"
+      },
+      "id": "build-payload",
+      "name": "Build Email Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-digest-email",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "trigger-email",
+      "name": "Trigger L0_08 Email Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1240, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (12:30 UTC = 6pm IST)": { "main": [[{ "node": "Fetch Digest Users", "type": "main", "index": 0 }]] },
+    "Fetch Digest Users": { "main": [[{ "node": "Batch Users (50 at a time)", "type": "main", "index": 0 }]] },
+    "Batch Users (50 at a time)": { "main": [[{ "node": "Get Personalized Feed (5 items)", "type": "main", "index": 0 }]] },
+    "Get Personalized Feed (5 items)": { "main": [[{ "node": "Build Email Payload", "type": "main", "index": 0 }]] },
+    "Build Email Payload": { "main": [[{ "node": "Trigger L0_08 Email Send", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -1,0 +1,153 @@
+{
+  "name": "L0_01 RSS Ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "*/30 * * * *" }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, slug, feed_url, authority_score FROM sources WHERE active = true AND source_type = 'rss' ORDER BY tier ASC, authority_score DESC"
+      },
+      "id": "fetch-active-sources",
+      "name": "Fetch Active RSS Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-sources",
+      "name": "Split By Source",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.feed_url }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "read-rss",
+      "name": "RSS Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize each RSS item for DB insertion\nconst sourceId = $('Split By Source').first().json.id;\nconst sourceAuthorityScore = $('Split By Source').first().json.authority_score || 20;\n\nconst items = [];\n\nfor (const item of $input.all()) {\n  const raw = item.json;\n  \n  // URL canonicalization: strip UTM params, trailing slash, lowercase\n  let url = (raw.link || raw.url || '').toString();\n  url = url.replace(/[?&](utm_source|utm_medium|utm_campaign|utm_term|utm_content|ref|fbclid|gclid)=[^&]*/gi, '');\n  url = url.replace(/[?&]+$/, '').replace('?&', '?').replace(/\\/$/, '').toLowerCase();\n  \n  if (!url) continue;\n  \n  // SHA-256 URL hash (browser-compatible via TextEncoder)\n  const msgBuffer = new TextEncoder().encode(url);\n  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);\n  const hashArray = Array.from(new Uint8Array(hashBuffer));\n  const urlHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');\n  \n  // Title normalization for trigram dedup (L2)\n  const title = (raw.title || '').trim();\n  const titleNormalized = title.toLowerCase().replace(/[^\\w\\s]/g, ' ').replace(/\\s+/g, ' ').trim();\n  \n  // Excerpt: strip HTML, first 500 chars\n  const excerpt = (raw.contentSnippet || raw.content || raw.summary || '')\n    .replace(/<[^>]*>/g, '').trim().slice(0, 500);\n  \n  // Published date\n  const publishedAt = raw.isoDate || raw.pubDate || new Date().toISOString();\n  const hoursSince = (Date.now() - new Date(publishedAt).getTime()) / 3600000;\n  \n  // Freshness component (0-15, decays ~1.6pts/hour)\n  const scoreFreshness = Math.max(0, 15 - Math.floor(hoursSince / 1.6));\n  const prioritySkeleton = sourceAuthorityScore + scoreFreshness;\n  \n  if (!title) continue;\n  \n  items.push({\n    source_id: sourceId,\n    source_type: 'rss',\n    source_url: url,\n    url_hash: urlHash,\n    title,\n    title_normalized: titleNormalized,\n    excerpt,\n    author: raw.creator || raw.author || null,\n    published_at: publishedAt,\n    score_source_authority: sourceAuthorityScore,\n    score_freshness: scoreFreshness,\n    priority_score: Math.min(100, prioritySkeleton),\n    pipeline_status: 'ingested'\n  });\n}\n\nreturn items;"
+      },
+      "id": "normalize-items",
+      "name": "Normalize & Hash",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO raw_items (source_id, source_type, source_url, url_hash, title, title_normalized, excerpt, author, published_at, score_source_authority, score_freshness, priority_score, pipeline_status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) ON CONFLICT (url_hash) DO NOTHING RETURNING id",
+        "additionalFields": {
+          "queryParams": "={{ [$json.source_id, $json.source_type, $json.source_url, $json.url_hash, $json.title, $json.title_normalized, $json.excerpt, $json.author, $json.published_at, $json.score_source_authority, $json.score_freshness, $json.priority_score, $json.pipeline_status] }}"
+        }
+      },
+      "id": "insert-raw-item",
+      "name": "Insert Raw Item (L1 Dedup)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ]
+        }
+      },
+      "id": "check-inserted",
+      "name": "Was Inserted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "leftValue": "={{ $json.priority_score }}",
+              "rightValue": 10,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ]
+        }
+      },
+      "id": "check-priority",
+      "name": "Priority >= 10?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-embed-dedup",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "item_id", "value": "={{ $json.id }}" }
+          ]
+        },
+        "options": { "timeout": 5000 }
+      },
+      "id": "trigger-embed-dedup",
+      "name": "Trigger L0_03 Embed+Dedup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1840, 240]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Fetch Active RSS Sources", "type": "main", "index": 0 }]] },
+    "Fetch Active RSS Sources": { "main": [[{ "node": "Split By Source", "type": "main", "index": 0 }]] },
+    "Split By Source": { "main": [[{ "node": "RSS Read", "type": "main", "index": 0 }]] },
+    "RSS Read": { "main": [[{ "node": "Normalize & Hash", "type": "main", "index": 0 }]] },
+    "Normalize & Hash": { "main": [[{ "node": "Insert Raw Item (L1 Dedup)", "type": "main", "index": 0 }]] },
+    "Insert Raw Item (L1 Dedup)": { "main": [[{ "node": "Was Inserted?", "type": "main", "index": 0 }]] },
+    "Was Inserted?": {
+      "main": [
+        [{ "node": "Check Priority", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Check Priority": {
+      "main": [
+        [{ "node": "Trigger L0_03 Embed+Dedup", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

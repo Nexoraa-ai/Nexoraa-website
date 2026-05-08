@@ -1,0 +1,352 @@
+{
+  "name": "L0_02 Social Ingest (Apify X + Reddit)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "30 0 * * *" }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (00:30 UTC = 6am IST)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Runs once daily. X/Twitter scraped at 6am IST (00:30 UTC), NOT 15-min polling. Controls Apify cost ($80/mo vs $150/mo)."
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, slug, url, source_type, authority_score, tier FROM sources WHERE active = true AND source_type IN ('api', 'json_undoc', 'third_party_api') ORDER BY tier ASC, authority_score DESC"
+      },
+      "id": "fetch-social-sources",
+      "name": "Fetch Social Sources",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.source_type }}",
+              "rightValue": "third_party_api",
+              "operator": { "type": "string", "operation": "equal" }
+            }
+          ]
+        }
+      },
+      "id": "route-by-type",
+      "name": "Route: X (Apify) vs Reddit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Apify X/Twitter scraper input for this source\n// Handles accounts like @OpenAI, @AnthropicAI, @GoogleDeepMind etc.\n// Tier 1-2 accounts: last 24h, up to 20 tweets\n// Tier 3+ accounts: last 24h, up to 10 tweets\nconst source = $input.first().json;\nconst maxTweets = source.tier <= 2 ? 20 : 10;\nconst sinceDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];\n\n// Extract handle from URL: https://x.com/OpenAI → openai\nconst handle = source.url.replace(/.*x\\.com\\//i, '').replace(/\\/.*/, '').replace('@', '');\n\nreturn [{ json: {\n  source_id: source.id,\n  source_name: source.name,\n  source_slug: source.slug,\n  authority_score: source.authority_score,\n  tier: source.tier,\n  handle,\n  apify_input: {\n    startUrls: [{ url: `https://x.com/${handle}` }],\n    maxItems: maxTweets,\n    since: sinceDate,\n    filter: { minLikes: 10, excludeReplies: true, excludeRetweets: false }\n  }\n}}];"
+      },
+      "id": "build-apify-input",
+      "name": "Build Apify Input (X Account)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/apify~twitter-scraper/runs?token={{ $env.APIFY_API_KEY }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.apify_input) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "apify-run",
+      "name": "Apify: Run Twitter Scraper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1040, 180]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "seconds"
+      },
+      "id": "wait-apify",
+      "name": "Wait 30s for Apify Run",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1240, 180]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.apify.com/v2/acts/apify~twitter-scraper/runs/{{ $('Apify: Run Twitter Scraper').first().json.data.id }}/dataset/items?token={{ $env.APIFY_API_KEY }}&limit=50",
+        "options": {}
+      },
+      "id": "apify-fetch-results",
+      "name": "Apify: Fetch Run Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1440, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Apify Twitter results into raw_items format\nconst sourceCtx = $('Build Apify Input (X Account)').first().json;\nconst tweets = $input.first().json;\n\nif (!Array.isArray(tweets) || tweets.length === 0) return [];\n\n// Filter: must have a URL (t.co link or quoted URL) and not be a pure reply\nconst items = tweets\n  .filter(t => t.full_text && !t.full_text.startsWith('@') && t.favorite_count >= 5)\n  .map(t => {\n    // Prefer the expanded URL from the tweet, fallback to the tweet URL itself\n    const expandedUrl = t.entities?.urls?.[0]?.expanded_url || `https://x.com/${t.user?.screen_name}/status/${t.id_str}`;\n    \n    // Skip pure X/Twitter links that aren't to external articles\n    const isExternalLink = !expandedUrl.includes('x.com') && !expandedUrl.includes('twitter.com');\n    const finalUrl = isExternalLink ? expandedUrl : `https://x.com/${t.user?.screen_name || 'unknown'}/status/${t.id_str}`;\n    \n    const rawUrl = finalUrl;\n    const canonical = rawUrl\n      .replace(/[?&](utm_[^&]*|ref=[^&]*)/gi, '')\n      .replace(/[?&]+$/, '')\n      .replace(/\\/$/, '')\n      .toLowerCase();\n    \n    const crypto = require('crypto');\n    const urlHash = crypto.createHash('sha256').update(canonical).digest('hex');\n    const title = t.full_text.replace(/https?:\\/\\/\\S+/g, '').replace(/\\s+/g, ' ').trim().slice(0, 200);\n    \n    return {\n      source_id: sourceCtx.source_id,\n      source_type: 'third_party_api',\n      source_url: rawUrl,\n      url_hash: urlHash,\n      title: title || t.full_text.slice(0, 200),\n      title_normalized: (title || '').toLowerCase().replace(/[^\\w\\s]/g, ' ').replace(/\\s+/g, ' ').trim(),\n      excerpt: t.full_text.slice(0, 500),\n      author: t.user?.screen_name || null,\n      published_at: t.created_at ? new Date(t.created_at).toISOString() : null,\n      score_source_authority: sourceCtx.authority_score,\n      score_freshness: 12,  // Just published, ~12 freshness pts (will be recalculated in L0_04)\n      score_engagement: Math.min(10, Math.floor(t.favorite_count / 100)),\n      pipeline_status: 'ingested',\n      priority_score: sourceCtx.authority_score + 12,\n      raw_metadata: {\n        tweet_id: t.id_str,\n        retweet_count: t.retweet_count,\n        favorite_count: t.favorite_count,\n        source_handle: t.user?.screen_name,\n        source_tier: sourceCtx.tier\n      }\n    };\n  });\n\nreturn items.map(item => ({ json: item }));"
+      },
+      "id": "normalize-tweets",
+      "name": "Normalize Tweets → raw_items Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Reddit JSON URL for this subreddit source\n// Uses the free reddit.com JSON API (no auth needed for public subs)\nconst source = $input.first().json;\n\n// Extract subreddit from URL: https://reddit.com/r/MachineLearning → MachineLearning\nconst subreddit = source.url.replace(/.*\\/r\\//i, '').replace(/\\/.*/, '');\n\nreturn [{ json: {\n  source_id: source.id,\n  source_name: source.name,\n  source_slug: source.slug,\n  authority_score: source.authority_score,\n  tier: source.tier,\n  subreddit,\n  reddit_url: `https://www.reddit.com/r/${subreddit}/new.json?limit=25&sort=new`\n}}];"
+      },
+      "id": "build-reddit-url",
+      "name": "Build Reddit JSON URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 420]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.reddit_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "User-Agent", "value": "NeuralForge/1.0 (news aggregator; contact digest@neuralforge.io)" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "reddit-fetch",
+      "name": "Reddit: Fetch New Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1040, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize Reddit posts into raw_items format\nconst sourceCtx = $('Build Reddit JSON URL').first().json;\nconst response = $input.first().json;\n\nconst posts = response?.data?.children || [];\nif (posts.length === 0) return [];\n\nconst items = posts\n  .filter(p => p.data && !p.data.stickied && p.data.score >= 20)\n  .map(p => {\n    const post = p.data;\n    \n    // Reddit posts: prefer external URL, fallback to reddit thread\n    const rawUrl = post.url || `https://reddit.com${post.permalink}`;\n    const isRedditSelf = rawUrl.includes('reddit.com/r/') && rawUrl.includes('/comments/');\n    \n    const canonical = rawUrl\n      .replace(/[?&](utm_[^&]*|ref=[^&]*)/gi, '')\n      .replace(/[?&]+$/, '')\n      .replace(/\\/$/, '')\n      .toLowerCase();\n    \n    const crypto = require('crypto');\n    const urlHash = crypto.createHash('sha256').update(canonical).digest('hex');\n    const title = (post.title || '').slice(0, 200);\n    \n    // Freshness score based on published_at\n    const ageHours = post.created_utc ? (Date.now()/1000 - post.created_utc) / 3600 : 6;\n    const freshness = Math.max(0, 15 - Math.floor(ageHours / 1.6));\n    const engagementScore = Math.min(10, Math.floor(post.score / 500));\n    \n    return {\n      source_id: sourceCtx.source_id,\n      source_type: 'json_undoc',\n      source_url: rawUrl,\n      url_hash: urlHash,\n      title,\n      title_normalized: title.toLowerCase().replace(/[^\\w\\s]/g, ' ').replace(/\\s+/g, ' ').trim(),\n      excerpt: (post.selftext || post.title || '').slice(0, 500),\n      author: post.author || null,\n      published_at: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,\n      score_source_authority: sourceCtx.authority_score,\n      score_freshness: freshness,\n      score_engagement: engagementScore,\n      pipeline_status: 'ingested',\n      priority_score: sourceCtx.authority_score + freshness + engagementScore,\n      raw_metadata: {\n        reddit_post_id: post.id,\n        subreddit: post.subreddit,\n        score: post.score,\n        num_comments: post.num_comments,\n        is_self_post: isRedditSelf,\n        upvote_ratio: post.upvote_ratio\n      }\n    };\n  });\n\nreturn items.map(item => ({ json: item }));"
+      },
+      "id": "normalize-reddit",
+      "name": "Normalize Reddit Posts → raw_items Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 420]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO raw_items (source_id, source_type, source_url, url_hash, title, title_normalized, excerpt, author, published_at, score_source_authority, score_freshness, score_engagement, pipeline_status, priority_score, raw_metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb) ON CONFLICT (url_hash) DO NOTHING",
+        "additionalFields": {
+          "queryParams": "={{ [$json.source_id, $json.source_type, $json.source_url, $json.url_hash, $json.title, $json.title_normalized, $json.excerpt, $json.author, $json.published_at, $json.score_source_authority, $json.score_freshness, $json.score_engagement, $json.pipeline_status, $json.priority_score, JSON.stringify($json.raw_metadata)] }}"
+        }
+      },
+      "id": "insert-tweet-items",
+      "name": "INSERT Tweets (ON CONFLICT url_hash DO NOTHING)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1840, 180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO raw_items (source_id, source_type, source_url, url_hash, title, title_normalized, excerpt, author, published_at, score_source_authority, score_freshness, score_engagement, pipeline_status, priority_score, raw_metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb) ON CONFLICT (url_hash) DO NOTHING",
+        "additionalFields": {
+          "queryParams": "={{ [$json.source_id, $json.source_type, $json.source_url, $json.url_hash, $json.title, $json.title_normalized, $json.excerpt, $json.author, $json.published_at, $json.score_source_authority, $json.score_freshness, $json.score_engagement, $json.pipeline_status, $json.priority_score, JSON.stringify($json.raw_metadata)] }}"
+        }
+      },
+      "id": "insert-reddit-items",
+      "name": "INSERT Reddit Posts (ON CONFLICT url_hash DO NOTHING)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1440, 420]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, priority_score FROM raw_items WHERE url_hash = $1 AND pipeline_status = 'ingested'",
+        "additionalFields": {
+          "queryParams": "={{ [$json.url_hash] }}"
+        }
+      },
+      "id": "check-was-inserted-tweet",
+      "name": "Was Tweet Inserted?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2040, 180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, priority_score FROM raw_items WHERE url_hash = $1 AND pipeline_status = 'ingested'",
+        "additionalFields": {
+          "queryParams": "={{ [$json.url_hash] }}"
+        }
+      },
+      "id": "check-was-inserted-reddit",
+      "name": "Was Reddit Post Inserted?",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1640, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            },
+            {
+              "leftValue": "={{ $json.priority_score }}",
+              "rightValue": 10,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "tweet-priority-gate",
+      "name": "Tweet: Inserted + Priority >= 10?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2240, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            },
+            {
+              "leftValue": "={{ $json.priority_score }}",
+              "rightValue": 10,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "reddit-priority-gate",
+      "name": "Reddit: Inserted + Priority >= 10?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1840, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-dedup-cluster",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "item_id", "value": "={{ $json.id }}" }
+          ]
+        }
+      },
+      "id": "trigger-dedup-tweet",
+      "name": "Trigger L0_03 (Tweet)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2440, 140]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-dedup-cluster",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "item_id", "value": "={{ $json.id }}" }
+          ]
+        }
+      },
+      "id": "trigger-dedup-reddit",
+      "name": "Trigger L0_03 (Reddit)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2040, 380]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (00:30 UTC = 6am IST)": {
+      "main": [[{ "node": "Fetch Social Sources", "type": "main", "index": 0 }]]
+    },
+    "Fetch Social Sources": {
+      "main": [[{ "node": "Route: X (Apify) vs Reddit?", "type": "main", "index": 0 }]]
+    },
+    "Route: X (Apify) vs Reddit?": {
+      "main": [
+        [{ "node": "Build Apify Input (X Account)", "type": "main", "index": 0 }],
+        [{ "node": "Build Reddit JSON URL", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Apify Input (X Account)": {
+      "main": [[{ "node": "Apify: Run Twitter Scraper", "type": "main", "index": 0 }]]
+    },
+    "Apify: Run Twitter Scraper": {
+      "main": [[{ "node": "Wait 30s for Apify Run", "type": "main", "index": 0 }]]
+    },
+    "Wait 30s for Apify Run": {
+      "main": [[{ "node": "Apify: Fetch Run Results", "type": "main", "index": 0 }]]
+    },
+    "Apify: Fetch Run Results": {
+      "main": [[{ "node": "Normalize Tweets → raw_items Format", "type": "main", "index": 0 }]]
+    },
+    "Normalize Tweets → raw_items Format": {
+      "main": [[{ "node": "INSERT Tweets (ON CONFLICT url_hash DO NOTHING)", "type": "main", "index": 0 }]]
+    },
+    "INSERT Tweets (ON CONFLICT url_hash DO NOTHING)": {
+      "main": [[{ "node": "Was Tweet Inserted?", "type": "main", "index": 0 }]]
+    },
+    "Was Tweet Inserted?": {
+      "main": [[{ "node": "Tweet: Inserted + Priority >= 10?", "type": "main", "index": 0 }]]
+    },
+    "Tweet: Inserted + Priority >= 10?": {
+      "main": [
+        [{ "node": "Trigger L0_03 (Tweet)", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Build Reddit JSON URL": {
+      "main": [[{ "node": "Reddit: Fetch New Posts", "type": "main", "index": 0 }]]
+    },
+    "Reddit: Fetch New Posts": {
+      "main": [[{ "node": "Normalize Reddit Posts → raw_items Format", "type": "main", "index": 0 }]]
+    },
+    "Normalize Reddit Posts → raw_items Format": {
+      "main": [[{ "node": "INSERT Reddit Posts (ON CONFLICT url_hash DO NOTHING)", "type": "main", "index": 0 }]]
+    },
+    "INSERT Reddit Posts (ON CONFLICT url_hash DO NOTHING)": {
+      "main": [[{ "node": "Was Reddit Post Inserted?", "type": "main", "index": 0 }]]
+    },
+    "Was Reddit Post Inserted?": {
+      "main": [[{ "node": "Reddit: Inserted + Priority >= 10?", "type": "main", "index": 0 }]]
+    },
+    "Reddit: Inserted + Priority >= 10?": {
+      "main": [
+        [{ "node": "Trigger L0_03 (Reddit)", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

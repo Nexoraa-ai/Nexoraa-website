@@ -1,0 +1,146 @@
+{
+  "name": "L0_06 Vertical Panels (Priority >= 70 Only)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "l0-vertical-panels",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT count(*) as cached_count FROM summary_cache WHERE cluster_id = $1 AND cache_type = 'vertical_panel'",
+        "additionalFields": { "queryParams": "={{ [$json.body.cluster_id] }}" }
+      },
+      "id": "check-cache",
+      "name": "Check Vertical Cache",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.cached_count }}",
+              "rightValue": 8,
+              "operator": { "type": "number", "operation": "equal" }
+            }
+          ]
+        }
+      },
+      "id": "all-cached",
+      "name": "All 8 Panels Cached?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT canonical_title, summary_intermediate FROM clusters WHERE id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.body.cluster_id] }}" }
+      },
+      "id": "fetch-cluster",
+      "name": "Fetch Cluster",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [840, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 800, system: 'You are a technology impact analyst. For each developer vertical listed, write exactly 2 sentences describing what this AI development means for that audience. Output valid JSON only, no text outside the JSON.', messages: [{ role: 'user', content: 'News: ' + $json.canonical_title + '\\nSummary: ' + ($json.summary_intermediate || '') + '\\n\\nOutput this JSON with exactly these 8 keys (2 sentences each):\\n{\\n  \"web-dev\": \"<2 sentences>\",\\n  \"mobile\": \"<2 sentences>\",\\n  \"data-ml\": \"<2 sentences>\",\\n  \"devops-cloud\": \"<2 sentences>\",\\n  \"design-ux\": \"<2 sentences>\",\\n  \"product\": \"<2 sentences>\",\\n  \"students\": \"<2 sentences>\",\\n  \"entrepreneurs\": \"<2 sentences>\"\\n}' }] }) }}"
+      },
+      "id": "haiku-vertical-panels",
+      "name": "Haiku: All 8 Verticals (Single Call)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1040, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst clusterId = $('Webhook Trigger').first().json.body.cluster_id;\nconst text = response.content?.[0]?.text || '{}';\nlet panels;\ntry { panels = JSON.parse(text); } catch { panels = {}; }\n\nconst inputTokens = response.usage?.input_tokens || 0;\nconst outputTokens = response.usage?.output_tokens || 0;\n// Haiku pricing\nconst costUsd = inputTokens * 0.0000008 + outputTokens * 0.000004;\n\nconst verticals = ['web-dev','mobile','data-ml','devops-cloud','design-ux','product','students','entrepreneurs'];\nconst cacheRows = verticals\n  .filter(v => panels[v])\n  .map(v => ({\n    cluster_id: clusterId,\n    cache_key: `vertical:${clusterId}:${v}`,\n    cache_type: 'vertical_panel',\n    vertical_slug: v,\n    content: panels[v],\n    model_used: 'haiku',\n    input_tokens: Math.round(inputTokens / 8),  // Distribute proportionally\n    output_tokens: Math.round(outputTokens / 8),\n    cost_usd: costUsd / 8\n  }));\n\nreturn [{ json: { cluster_id: clusterId, panels, cache_rows: cacheRows, cost_usd: costUsd } }];"
+      },
+      "id": "parse-panels",
+      "name": "Parse Panels",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 420]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE clusters SET vertical_panels = $1::jsonb, vertical_panels_cached_at = now() WHERE id = $2",
+        "additionalFields": {
+          "queryParams": "={{ [JSON.stringify($json.panels), $json.cluster_id] }}"
+        }
+      },
+      "id": "update-cluster-panels",
+      "name": "Update Cluster Vertical Panels",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1440, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expand cache_rows array into individual items for batch INSERT\nconst rows = $input.first().json.cache_rows;\nreturn rows.map(row => ({ json: row }));"
+      },
+      "id": "expand-cache-rows",
+      "name": "Expand Cache Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 420]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO summary_cache (cluster_id, cache_key, cache_type, vertical_slug, content, model_used, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (cluster_id, cache_type, vertical_slug) DO NOTHING",
+        "additionalFields": {
+          "queryParams": "={{ [$json.cluster_id, $json.cache_key, $json.cache_type, $json.vertical_slug, $json.content, $json.model_used, $json.input_tokens, $json.output_tokens, $json.cost_usd] }}"
+        }
+      },
+      "id": "insert-cache",
+      "name": "Insert Summary Cache (8 rows)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1840, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Check Vertical Cache", "type": "main", "index": 0 }]] },
+    "Check Vertical Cache": { "main": [[{ "node": "All 8 Panels Cached?", "type": "main", "index": 0 }]] },
+    "All 8 Panels Cached?": {
+      "main": [
+        [],
+        [{ "node": "Fetch Cluster", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Cluster": { "main": [[{ "node": "Haiku: All 8 Verticals (Single Call)", "type": "main", "index": 0 }]] },
+    "Haiku: All 8 Verticals (Single Call)": { "main": [[{ "node": "Parse Panels", "type": "main", "index": 0 }]] },
+    "Parse Panels": { "main": [[{ "node": "Update Cluster Vertical Panels", "type": "main", "index": 0 }]] },
+    "Update Cluster Vertical Panels": { "main": [[{ "node": "Expand Cache Rows", "type": "main", "index": 0 }]] },
+    "Expand Cache Rows": { "main": [[{ "node": "Insert Summary Cache (8 rows)", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

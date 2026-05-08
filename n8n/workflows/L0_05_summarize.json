@@ -1,0 +1,227 @@
+{
+  "name": "L0_05 Cluster Summarize (Cost-Optimized)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "l0-summarize",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ri.cluster_id, ri.priority_score FROM raw_items ri WHERE ri.id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.body.item_id] }}" }
+      },
+      "id": "get-cluster-id",
+      "name": "Get Cluster ID",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id FROM summary_cache WHERE cluster_id = $1 AND cache_type = 'cluster_summary' LIMIT 1",
+        "additionalFields": { "queryParams": "={{ [$json.cluster_id] }}" }
+      },
+      "id": "check-cache",
+      "name": "Check Summary Cache",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ]
+        }
+      },
+      "id": "cache-hit-check",
+      "name": "Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE raw_items SET pipeline_status = 'summarized' WHERE id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.body.item_id] }}" }
+      },
+      "id": "mark-summarized-cache-hit",
+      "name": "Mark Summarized (Cache Hit)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1040, 420]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ri.title, ri.excerpt, ri.full_text FROM raw_items ri WHERE ri.cluster_id = $1 AND ri.is_duplicate = false ORDER BY length(coalesce(ri.full_text, '')) DESC LIMIT 3",
+        "additionalFields": { "queryParams": "={{ [$('Get Cluster ID').first().json.cluster_id] }}" }
+      },
+      "id": "fetch-cluster-items",
+      "name": "Fetch Top 3 Cluster Items",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1040, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build summarization prompt: cap at 2000 tokens (~1500 words)\nconst clusterItems = $input.all();\nconst excerpts = clusterItems\n  .map(item => `${item.json.title}\\n${(item.json.excerpt || item.json.full_text || '').slice(0, 400)}`)\n  .join('\\n---\\n');\nconst source_excerpts = excerpts.slice(0, 3000); // Hard cap\n\nconst cluster = $('Get Cluster ID').first().json;\nconst canonicalTitle = clusterItems[0]?.json?.title || 'Unknown';\nconst itemCount = clusterItems.length;\nconst priorityScore = cluster.priority_score || 0;\n\n// Select model based on priority (locked decision from plan)\nconst model = priorityScore >= 90 ? 'claude-opus-4-7' : 'claude-sonnet-4-6';\n\nconst systemPrompt = `You are an AI news analyst for NeuralForge. You write summaries at three reading levels simultaneously.\\n\\nRules:\\n- beginner: ~200 words, zero jargon, plain English, start with \"What happened:\", explain why non-technical people should care\\n- intermediate: ~100 words, for working developers, include specific model names, benchmark numbers, API changes if relevant\\n- expert: ~50 words, for ML engineers and researchers, dense, technical terms permitted, focus on architecture/methodology/implication\\n- Never pad to hit word counts — say less if there is less to say\\n- Output valid JSON only, no text outside the JSON object`;\n\nconst userPrompt = `Story cluster: ${canonicalTitle}\\nSources (${itemCount} sources corroborate this story):\\n${source_excerpts}\\n\\nOutput this exact JSON:\\n{\\n  \"beginner\": \"<~200 words. Plain English. Start with 'What happened:'. Why should non-technical readers care.>\",\\n  \"intermediate\": \"<~100 words. For working developers. Include model names, benchmark numbers, API changes.>\",\\n  \"expert\": \"<~50 words. For ML engineers. Dense. Technical terms. Architecture/training methodology/implication.>\",\\n  \"category\": \"<confirm: model_release|tool_launch|research_paper|funding|opinion|tutorial|security|regulation>\",\\n  \"headline_score_boost\": <-10 to +10 integer>\\n}`;\n\nreturn [{ json: {\n  cluster_id: cluster.cluster_id,\n  priority_score: priorityScore,\n  model,\n  system_prompt: systemPrompt,\n  user_prompt: userPrompt,\n  item_id: $('Webhook Trigger').first().json.body.item_id\n}}];"
+      },
+      "id": "build-prompt",
+      "name": "Build Summarization Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "anthropic-beta", "value": "prompt-caching-2024-07-31" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $json.model, max_tokens: 1000, system: [{ type: 'text', text: $json.system_prompt, cache_control: { type: 'ephemeral' } }], messages: [{ role: 'user', content: $json.user_prompt }] }) }}"
+      },
+      "id": "claude-summarize",
+      "name": "Claude Summarize (Sonnet/Opus)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1440, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst context = $('Build Summarization Prompt').first().json;\nconst text = response.content?.[0]?.text || '{}';\n\nlet parsed;\ntry { parsed = JSON.parse(text); } catch { parsed = {}; }\n\nconst inputTokens = response.usage?.input_tokens || 0;\nconst outputTokens = response.usage?.output_tokens || 0;\n\n// Cost calculation based on model\nconst isOpus = context.model.includes('opus');\nconst priceInput = isOpus ? 0.000015 : 0.000003;\nconst priceOutput = isOpus ? 0.000075 : 0.000015;\nconst costUsd = inputTokens * priceInput + outputTokens * priceOutput;\n\nreturn [{ json: {\n  cluster_id: context.cluster_id,\n  item_id: context.item_id,\n  priority_score: context.priority_score,\n  model: context.model,\n  summary_beginner: parsed.beginner || null,\n  summary_intermediate: parsed.intermediate || null,\n  summary_expert: parsed.expert || null,\n  category: parsed.category || null,\n  headline_score_boost: parsed.headline_score_boost || 0,\n  input_tokens: inputTokens,\n  output_tokens: outputTokens,\n  cost_usd: costUsd\n}}];"
+      },
+      "id": "parse-response",
+      "name": "Parse Summary Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE clusters SET summary_beginner = $1, summary_intermediate = $2, summary_expert = $3, summary_generated_at = now(), summary_model = $4, summary_cost_usd = $5, priority_score = LEAST(100, priority_score + $6), pipeline_status = 'summarized' WHERE id = $7",
+        "additionalFields": {
+          "queryParams": "={{ [$json.summary_beginner, $json.summary_intermediate, $json.summary_expert, $json.model, $json.cost_usd, $json.headline_score_boost, $json.cluster_id] }}"
+        }
+      },
+      "id": "update-cluster",
+      "name": "Update Cluster Summaries",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1840, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO summary_cache (cluster_id, cache_key, cache_type, content, model_used, input_tokens, output_tokens, cost_usd) VALUES ($1, $2, 'cluster_summary', $3, $4, $5, $6, $7) ON CONFLICT (cluster_id, cache_type, vertical_slug) DO NOTHING",
+        "additionalFields": {
+          "queryParams": "={{ [$json.cluster_id, 'summary:' + $json.cluster_id, JSON.stringify({ beginner: $json.summary_beginner, intermediate: $json.summary_intermediate, expert: $json.summary_expert }), $json.model, $json.input_tokens, $json.output_tokens, $json.cost_usd] }}"
+        }
+      },
+      "id": "write-cache",
+      "name": "Write Summary Cache (Immutable)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2040, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE raw_items SET pipeline_status = 'summarized' WHERE id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.item_id] }}" }
+      },
+      "id": "mark-item-summarized",
+      "name": "Mark Item Summarized",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2240, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.priority_score }}",
+              "rightValue": 70,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ]
+        }
+      },
+      "id": "check-vertical-threshold",
+      "name": "Priority >= 70?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-vertical-panels",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "cluster_id", "value": "={{ $json.cluster_id }}" }
+          ]
+        }
+      },
+      "id": "trigger-vertical-panels",
+      "name": "Trigger L0_06 Vertical Panels",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2640, 140]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Get Cluster ID", "type": "main", "index": 0 }]] },
+    "Get Cluster ID": { "main": [[{ "node": "Check Summary Cache", "type": "main", "index": 0 }]] },
+    "Check Summary Cache": { "main": [[{ "node": "Cache Hit?", "type": "main", "index": 0 }]] },
+    "Cache Hit?": {
+      "main": [
+        [{ "node": "Mark Summarized (Cache Hit)", "type": "main", "index": 0 }],
+        [{ "node": "Fetch Top 3 Cluster Items", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Top 3 Cluster Items": { "main": [[{ "node": "Build Summarization Prompt", "type": "main", "index": 0 }]] },
+    "Build Summarization Prompt": { "main": [[{ "node": "Claude Summarize (Sonnet/Opus)", "type": "main", "index": 0 }]] },
+    "Claude Summarize (Sonnet/Opus)": { "main": [[{ "node": "Parse Summary Response", "type": "main", "index": 0 }]] },
+    "Parse Summary Response": { "main": [[{ "node": "Update Cluster Summaries", "type": "main", "index": 0 }]] },
+    "Update Cluster Summaries": { "main": [[{ "node": "Write Summary Cache (Immutable)", "type": "main", "index": 0 }]] },
+    "Write Summary Cache (Immutable)": { "main": [[{ "node": "Mark Item Summarized", "type": "main", "index": 0 }]] },
+    "Mark Item Summarized": { "main": [[{ "node": "Priority >= 70?", "type": "main", "index": 0 }]] },
+    "Priority >= 70?": {
+      "main": [
+        [{ "node": "Trigger L0_06 Vertical Panels", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

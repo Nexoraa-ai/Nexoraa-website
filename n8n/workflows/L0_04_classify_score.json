@@ -1,0 +1,188 @@
+{
+  "name": "L0_04 Classify + Score",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "l0-classify-score",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ri.id, ri.title, ri.title_normalized, ri.url_hash, ri.source_url, ri.excerpt, ri.published_at, ri.score_source_authority, ri.score_freshness, s.slug as source_slug, s.name as source_name, s.authority_score, c.item_count FROM raw_items ri JOIN sources s ON s.id = ri.source_id LEFT JOIN clusters cl ON cl.id = ri.cluster_id LEFT JOIN clusters c ON c.id = ri.cluster_id WHERE ri.id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.body.item_id] }}" }
+      },
+      "id": "fetch-item-source",
+      "name": "Fetch Item + Source",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rules engine: deterministic classification (~60% of items)\n// Returns { category, confidence } — if confidence >= 0.85, skip Haiku\n\nconst item = $input.first().json;\nconst titleLower = (item.title || '').toLowerCase();\nconst urlLower = (item.source_url || '').toLowerCase();\nconst slug = item.source_slug || '';\n\nlet category = 'opinion';\nlet confidence = 0.40;\n\n// Research papers\nif (urlLower.includes('arxiv.org') || slug === 'huggingface-papers' ||\n    titleLower.includes(' paper') || titleLower.includes('we propose') ||\n    titleLower.includes('survey of') || titleLower.includes('we present')) {\n  category = 'research_paper'; confidence = 0.92;\n}\n// Model releases from high-authority sources\nelse if (['openai-blog','anthropic-blog','deepmind-blog','google-ai-blog','meta-ai-blog','mistral-blog'].includes(slug)) {\n  const modelWords = ['gpt-','claude-','gemini ','llama ','mistral-','releases model','new model','model release','launches model',' api available','new api'];\n  if (modelWords.some(k => titleLower.includes(k))) {\n    category = 'model_release'; confidence = 0.94;\n  } else {\n    category = 'tool_launch'; confidence = 0.75;\n  }\n}\n// Tools / open source\nelse if (slug === 'github-trending' || slug === 'producthunt-ai' ||\n         urlLower.includes('github.com') || titleLower.includes('open source') ||\n         titleLower.includes(' launches ') || titleLower.includes(' introduces ')) {\n  category = 'tool_launch'; confidence = 0.85;\n}\n// Funding\nelse {\n  const fundingWords = ['raises','funding','series a','series b','series c','seed round','valuation','investment'];\n  const fundingMatches = fundingWords.filter(k => titleLower.includes(k));\n  if (fundingMatches.length >= 2) {\n    category = 'funding'; confidence = 0.90;\n  }\n  // Security\n  else {\n    const secWords = ['vulnerability','jailbreak','attack','exploit','breach','safety','alignment','red team','adversarial'];\n    if (secWords.some(k => titleLower.includes(k))) {\n      category = 'security'; confidence = 0.88;\n    }\n    // Tutorial\n    else if (titleLower.startsWith('how to') || titleLower.startsWith('building') ||\n             titleLower.includes('tutorial') || titleLower.includes('guide to')) {\n      category = 'tutorial'; confidence = 0.87;\n    }\n    // Regulation\n    else {\n      const regWords = ['regulation','policy','law','ban','eu ai act','ftc','nist','compliance','govern'];\n      if (regWords.some(k => titleLower.includes(k))) {\n        category = 'regulation'; confidence = 0.86;\n      }\n    }\n  }\n}\n\nreturn [{ json: { ...item, rules_category: category, rules_confidence: confidence } }];"
+      },
+      "id": "rules-engine",
+      "name": "Rules Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.rules_confidence }}",
+              "rightValue": 0.85,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ]
+        }
+      },
+      "id": "confidence-check",
+      "name": "Rules Confident?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 150, system: 'You are a classifier for AI industry news. Respond with valid JSON only.', messages: [{ role: 'user', content: 'Title: ' + $json.title + '\\nSource: ' + $json.source_name + '\\nExcerpt: ' + ($json.excerpt || '').split(' ').slice(0,100).join(' ') + '\\n\\nOutput: {\"category\": \"<model_release|tool_launch|research_paper|funding|opinion|tutorial|security|regulation>\", \"priority_signal\": <0-100>, \"reasoning\": \"<one sentence>\"}' }] }) }}"
+      },
+      "id": "haiku-classify",
+      "name": "Haiku Classification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1040, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge classification result and compute final priority score\nconst item = $('Rules Engine').first().json;\nconst fromRules = $('Rules Confident?').first()?.json?.rules_confidence >= 0.85;\n\nlet category, prioritySignal, classificationMethod;\n\nif (fromRules) {\n  category = item.rules_category;\n  prioritySignal = 0; // Not used from rules; computed below\n  classificationMethod = 'rules';\n} else {\n  const haikusResponse = $('Haiku Classification').first().json;\n  const haikusText = haikusResponse.content?.[0]?.text || '{}';\n  let parsed;\n  try { parsed = JSON.parse(haikusText); } catch { parsed = {}; }\n  category = parsed.category || item.rules_category || 'opinion';\n  prioritySignal = parsed.priority_signal || 40;\n  classificationMethod = 'haiku';\n}\n\n// Cross-coverage component: each additional source adds 5 points, cap 25\nconst itemCount = item.item_count || 1;\nconst scoreCrossCoverage = Math.min(25, (itemCount - 1) * 5);\n\n// Final priority score (all 5 components)\nconst scoreSourceAuthority = item.score_source_authority || 20;\nconst scoreFreshness = item.score_freshness || 0;\nconst scoreEngagement = 0; // Updated later when engagement signals arrive\nconst scoreAuthorAuthority = 0; // Updated later via author registry lookup\n\nconst priorityScore = Math.min(100, Math.max(0,\n  scoreSourceAuthority + scoreCrossCoverage + scoreFreshness +\n  scoreEngagement + scoreAuthorAuthority\n));\n\nreturn [{ json: {\n  item_id: item.id,\n  category,\n  priority_score: priorityScore,\n  score_source_authority: scoreSourceAuthority,\n  score_cross_coverage: scoreCrossCoverage,\n  score_freshness: scoreFreshness,\n  score_engagement: scoreEngagement,\n  score_author_authority: scoreAuthorAuthority,\n  classification_method: classificationMethod\n}}];"
+      },
+      "id": "compute-final-score",
+      "name": "Compute Final Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE raw_items SET category = $1, priority_score = $2, score_source_authority = $3, score_cross_coverage = $4, score_freshness = $5, score_engagement = $6, score_author_authority = $7, classification_method = $8, pipeline_status = 'scored' WHERE id = $9",
+        "additionalFields": {
+          "queryParams": "={{ [$json.category, $json.priority_score, $json.score_source_authority, $json.score_cross_coverage, $json.score_freshness, $json.score_engagement, $json.score_author_authority, $json.classification_method, $json.item_id] }}"
+        }
+      },
+      "id": "update-item",
+      "name": "Update Item with Score",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO classification_log (item_id, method, category_result, priority_result) VALUES ($1, $2, $3, $4)",
+        "additionalFields": {
+          "queryParams": "={{ [$json.item_id, $json.classification_method, $json.category, $json.priority_score] }}"
+        }
+      },
+      "id": "log-classification",
+      "name": "Log Classification (Cost Monitoring)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.priority_score }}",
+              "rightValue": 50,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ]
+        }
+      },
+      "id": "check-summary-threshold",
+      "name": "Priority >= 50?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1840, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-summarize",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "item_id", "value": "={{ $json.item_id }}" },
+            { "name": "priority_score", "value": "={{ $json.priority_score }}" }
+          ]
+        }
+      },
+      "id": "trigger-summarize",
+      "name": "Trigger L0_05 Summarize",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2040, 240]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE raw_items SET pipeline_status = 'archived' WHERE id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.item_id] }}" }
+      },
+      "id": "archive-low-priority",
+      "name": "Archive (priority < 50)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [2040, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Fetch Item + Source", "type": "main", "index": 0 }]] },
+    "Fetch Item + Source": { "main": [[{ "node": "Rules Engine", "type": "main", "index": 0 }]] },
+    "Rules Engine": { "main": [[{ "node": "Rules Confident?", "type": "main", "index": 0 }]] },
+    "Rules Confident?": {
+      "main": [
+        [{ "node": "Compute Final Score", "type": "main", "index": 0 }],
+        [{ "node": "Haiku Classification", "type": "main", "index": 0 }]
+      ]
+    },
+    "Haiku Classification": { "main": [[{ "node": "Compute Final Score", "type": "main", "index": 0 }]] },
+    "Compute Final Score": { "main": [[{ "node": "Update Item with Score", "type": "main", "index": 0 }]] },
+    "Update Item with Score": { "main": [[{ "node": "Log Classification (Cost Monitoring)", "type": "main", "index": 0 }]] },
+    "Log Classification (Cost Monitoring)": { "main": [[{ "node": "Priority >= 50?", "type": "main", "index": 0 }]] },
+    "Priority >= 50?": {
+      "main": [
+        [{ "node": "Trigger L0_05 Summarize", "type": "main", "index": 0 }],
+        [{ "node": "Archive (priority < 50)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

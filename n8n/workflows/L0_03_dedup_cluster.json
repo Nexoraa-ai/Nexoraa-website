@@ -1,0 +1,143 @@
+{
+  "name": "L0_03 Embed + Dedup + Cluster",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "l0-embed-dedup",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, excerpt FROM raw_items WHERE id = $1",
+        "additionalFields": { "queryParams": "={{ [$json.body.item_id] }}" }
+      },
+      "id": "fetch-item",
+      "name": "Fetch Item",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "text-embedding-3-small" },
+            { "name": "input", "value": "={{ ($json.title + ' ' + ($json.excerpt || '')).slice(0, 2000) }}" },
+            { "name": "dimensions", "value": 1536 }
+          ]
+        }
+      },
+      "id": "generate-embedding",
+      "name": "Generate Embedding (text-embedding-3-small)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE raw_items SET embedding = $1::vector WHERE id = $2",
+        "additionalFields": {
+          "queryParams": "={{ ['[' + $json.data[0].embedding.join(',') + ']', $('Fetch Item').first().json.id] }}"
+        }
+      },
+      "id": "store-embedding",
+      "name": "Store Embedding",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM find_or_create_cluster($1, $2, $3::vector, $4)",
+        "additionalFields": {
+          "queryParams": "={{ [$('Fetch Item').first().json.id, $('Fetch Item').first().json.title_normalized, '[' + $('Generate Embedding (text-embedding-3-small)').first().json.data[0].embedding.join(',') + ']', $('Fetch Item').first().json.published_at] }}"
+        }
+      },
+      "id": "find-or-create-cluster",
+      "name": "Find or Create Cluster (L2+L3 Dedup)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_duplicate }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equal" }
+            }
+          ]
+        }
+      },
+      "id": "check-duplicate",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE raw_items SET pipeline_status = 'archived' WHERE id = $1",
+        "additionalFields": {
+          "queryParams": "={{ [$('Fetch Item').first().json.id] }}"
+        }
+      },
+      "id": "archive-duplicate",
+      "name": "Archive Duplicate",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1440, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/webhook/l0-classify-score",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "item_id", "value": "={{ $('Fetch Item').first().json.id }}" }
+          ]
+        },
+        "options": { "timeout": 5000 }
+      },
+      "id": "trigger-classify",
+      "name": "Trigger L0_04 Classify+Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1440, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Fetch Item", "type": "main", "index": 0 }]] },
+    "Fetch Item": { "main": [[{ "node": "Generate Embedding (text-embedding-3-small)", "type": "main", "index": 0 }]] },
+    "Generate Embedding (text-embedding-3-small)": { "main": [[{ "node": "Store Embedding", "type": "main", "index": 0 }]] },
+    "Store Embedding": { "main": [[{ "node": "Find or Create Cluster (L2+L3 Dedup)", "type": "main", "index": 0 }]] },
+    "Find or Create Cluster (L2+L3 Dedup)": { "main": [[{ "node": "Is Duplicate?", "type": "main", "index": 0 }]] },
+    "Is Duplicate?": {
+      "main": [
+        [{ "node": "Archive Duplicate", "type": "main", "index": 0 }],
+        [{ "node": "Trigger L0_04 Classify+Score", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}
