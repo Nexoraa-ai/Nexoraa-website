@@ -20,7 +20,7 @@ nexoraa/
 │   ├── ui/                   Shared design tokens, globals.css
 │   └── types/                Shared TypeScript types (@neuralforge/types)
 ├── supabase/
-│   ├── migrations/           5 ordered SQL migration files
+│   ├── migrations/           7 ordered SQL migration files
 │   └── seed/                 Day-1 source seeds
 ├── n8n/workflows/            Pipeline workflow JSON exports
 └── scripts/                  test-pipeline, backfill-embeddings, seed-sources
@@ -36,7 +36,7 @@ Sign up at [supabase.com](https://supabase.com) → create project → note the 
 
 ### 2. Apply migrations in order
 
-The `supabase/migrations/` folder contains 5 ordered SQL files. Run them **in numerical order** in the Supabase SQL Editor (Dashboard → SQL → New query):
+The `supabase/migrations/` folder contains 7 ordered SQL files. Run them **in numerical order** in the Supabase SQL Editor (Dashboard → SQL → New query):
 
 | File | What it creates |
 |---|---|
@@ -45,6 +45,8 @@ The `supabase/migrations/` folder contains 5 ordered SQL files. Run them **in nu
 | `0003_rls_policies.sql` | Row Level Security policies for all tables |
 | `0004_functions.sql` | `canonicalize_url()`, `find_or_create_cluster()`, `calculate_priority_score()`, `get_feed()` |
 | `0005_indexes.sql` | HNSW indexes for `embedding`, GIN for trigrams, btree for hot queries |
+| `0006_api_grants.sql` | Supabase Data API grants for public feed reads and authenticated user profile writes |
+| `0007_user_profile_metadata.sql` | Adds user profile metadata used by onboarding and settings |
 
 ### 3. Seed sources (optional but recommended)
 

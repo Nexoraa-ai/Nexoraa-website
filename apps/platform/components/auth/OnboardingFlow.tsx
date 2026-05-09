@@ -69,6 +69,7 @@ export function OnboardingFlow({ userId, userEmail }: OnboardingFlowProps) {
   const [selectedVerticals, setSelectedVerticals] = useState<VerticalSlug[]>(['web-dev', 'data-ml'])
   const [selectedLevel, setSelectedLevel] = useState<SummaryLevel>('beginner')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const currentIndex = STEP_ORDER.indexOf(step)
   const totalSteps = STEP_ORDER.length - 1
@@ -87,8 +88,9 @@ export function OnboardingFlow({ userId, userEmail }: OnboardingFlowProps) {
 
   async function handleFinish() {
     setSaving(true)
+    setSaveError(null)
     const supabase = createClient()
-    await supabase.from('user_profiles').upsert({
+    const { error } = await supabase.from('user_profiles').upsert({
       id: userId,
       display_name: displayName.trim() || userEmail.split('@')[0],
       selected_verticals: selectedVerticals,
@@ -96,6 +98,13 @@ export function OnboardingFlow({ userId, userEmail }: OnboardingFlowProps) {
       plan: 'free',
       metadata: { role: selectedRole },
     })
+
+    if (error) {
+      setSaveError(error.message)
+      setSaving(false)
+      return
+    }
+
     setStep('done')
     setTimeout(() => router.replace('/feed'), 2400)
   }
@@ -235,6 +244,11 @@ export function OnboardingFlow({ userId, userEmail }: OnboardingFlowProps) {
               Continue →
             </button>
           </div>
+          {saveError && (
+            <div className="mt-4 rounded-lg border border-[#f74470]/20 bg-[#f74470]/10 px-3 py-2">
+              <p className="text-[12px] text-[#f74470]">{saveError}</p>
+            </div>
+          )}
         </div>
       )}
 

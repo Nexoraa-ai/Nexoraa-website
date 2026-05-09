@@ -4,6 +4,12 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
+function getCallbackUrl(nextPath: string) {
+  const url = new URL('/auth/callback', window.location.origin)
+  url.searchParams.set('next', nextPath)
+  return url.toString()
+}
+
 export function SignupForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -26,11 +32,11 @@ export function SignupForm() {
     setError(null)
 
     const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: getCallbackUrl('/onboarding'),
         data: { plan },
       },
     })
@@ -38,6 +44,12 @@ export function SignupForm() {
     if (error) {
       setError(error.message)
       setLoading(false)
+      return
+    }
+
+    if (data.session) {
+      router.replace('/onboarding')
+      router.refresh()
       return
     }
 
@@ -52,8 +64,7 @@ export function SignupForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
-        queryParams: { plan },
+        redirectTo: getCallbackUrl('/onboarding'),
       },
     })
 

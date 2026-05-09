@@ -1,17 +1,36 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+
+function getCallbackUrl(nextPath: string) {
+  const url = new URL('/auth/callback', window.location.origin)
+  url.searchParams.set('next', nextPath)
+  return url.toString()
+}
+
+function getSafeNext(next: string | null) {
+  return next?.startsWith('/') && !next.startsWith('//') ? next : '/feed'
+}
 
 export function LoginForm() {
   const router = useRouter()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [nextPath, setNextPath] = useState('/feed')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setNextPath(getSafeNext(params.get('next')))
+
+    const callbackError = params.get('error')
+    if (callbackError) setError(callbackError)
+  }, [])
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -27,7 +46,7 @@ export function LoginForm() {
       return
     }
 
-    router.replace('/feed')
+    router.replace(nextPath)
     router.refresh()
   }
 
@@ -39,7 +58,7 @@ export function LoginForm() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/feed`,
+        redirectTo: getCallbackUrl(nextPath),
       },
     })
 
