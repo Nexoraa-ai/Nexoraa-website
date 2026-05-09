@@ -8,7 +8,6 @@ export function SignupForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const plan = searchParams.get('plan') ?? 'free'
-  const supabase = createClient()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -26,6 +25,7 @@ export function SignupForm() {
     setLoading(true)
     setError(null)
 
+    const supabase = createClient()
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -48,6 +48,7 @@ export function SignupForm() {
     setGoogleLoading(true)
     setError(null)
 
+    const supabase = createClient()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

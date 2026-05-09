@@ -412,24 +412,37 @@ export function Features() {
           <h2 className="text-[clamp(1.8rem,4vw,2.8rem)] font-extrabold tracking-tight text-[#e8e9f5] mb-3">
             7 layers. <span className="bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(95deg, #7c6df8, #00d4ff)' }}>Try them all.</span>
           </h2>
-          <p className="text-[#565775] text-[15px] max-w-xl mx-auto">
+          <p className="text-[#a8abc8] text-base max-w-xl mx-auto">
             Each layer feeds the next. Click a layer to see what it actually does.
           </p>
         </div>
 
         {/* Connected layer pipeline */}
-        <div className="relative mb-8 overflow-x-auto pb-2">
-          <div className="flex items-center justify-center gap-0 min-w-max mx-auto px-2">
-            {LAYERS.map((layer, i) => {
+        <div className="relative mb-8 pb-2">
+          <div
+            className="absolute left-[7%] right-[7%] top-5 h-px opacity-70 sm:top-6"
+            style={{ background: `linear-gradient(90deg, ${LAYERS.map(layer => layer.color).join(', ')})` }}
+          />
+          <div className="absolute left-[7%] right-[7%] top-5 h-px bg-[#0a0b14]/50 sm:top-6" />
+          <div
+            className="absolute top-[1.1rem] h-1.5 w-1.5 rounded-full transition-all duration-700 sm:top-[1.35rem]"
+            style={{
+              left: `calc(7% + ${(LAYERS.findIndex(layer => layer.num === activeLayer) / (LAYERS.length - 1)) * 86}% - 3px)`,
+              background: active.color,
+              boxShadow: `0 0 12px ${active.color}, 0 0 28px ${active.color}80`,
+            }}
+          />
+          <div className="grid grid-cols-7 items-start gap-1 sm:gap-4 px-1 sm:px-2">
+            {LAYERS.map((layer) => {
               const isActive = activeLayer === layer.num
               return (
-                <div key={layer.num} className="flex items-center">
+                <div key={layer.num} className="relative flex items-start justify-center">
                   <button
                     onClick={() => pickLayer(layer.num)}
-                    className="group relative flex flex-col items-center gap-1.5 transition-all duration-300"
+                    className="group relative z-10 flex min-w-0 flex-col items-center gap-2 transition-all duration-300"
                   >
                     <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-lg transition-all duration-300 border-2"
+                      className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-base sm:text-lg transition-all duration-300 border-2"
                       style={{
                         background: isActive ? `${layer.color}15` : '#0e0f18',
                         borderColor: isActive ? layer.color : '#1e1f30',
@@ -445,29 +458,18 @@ export function Features() {
                       )}
                     </div>
                     <span
-                      className="font-mono text-[9px] font-bold transition-colors"
-                      style={{ color: isActive ? layer.color : '#383960' }}
+                      className="font-mono text-[10px] font-bold transition-colors"
+                      style={{ color: isActive ? layer.color : '#8f92b8' }}
                     >
                       L{layer.num}
                     </span>
                     <span
-                      className="text-[10px] font-semibold transition-colors absolute top-full mt-6"
-                      style={{ color: isActive ? '#e8e9f5' : '#565775' }}
+                      className="text-[11px] sm:text-xs font-semibold leading-tight transition-colors text-center"
+                      style={{ color: isActive ? '#ffffff' : '#a8abc8' }}
                     >
                       {layer.name}
                     </span>
                   </button>
-                  {/* Connector */}
-                  {i < LAYERS.length - 1 && (
-                    <div
-                      className="w-6 sm:w-10 h-px mx-1 transition-all duration-500"
-                      style={{
-                        background: isActive
-                          ? `linear-gradient(90deg, ${layer.color}, ${LAYERS[i + 1].color}30)`
-                          : '#1e1f30',
-                      }}
-                    />
-                  )}
                 </div>
               )
             })}
@@ -512,16 +514,16 @@ export function Features() {
               </div>
             </div>
 
-            <p className="text-[15px] text-[#8587a8] leading-relaxed">{active.pitch}</p>
+            <p className="text-base text-[#c5c7dc] leading-relaxed">{active.pitch}</p>
 
             {active.flowFrom && (
-              <div className="flex items-center gap-2 text-[11px] text-[#565775]">
+              <div className="flex items-center gap-2 text-xs text-[#a8abc8]">
                 <span className="font-mono">flows from</span>
                 <span className="font-mono px-2 py-0.5 rounded" style={{ color: active.color, background: `${active.color}10` }}>
                   {active.flowFrom}
                 </span>
                 <span style={{ color: active.color }}>→</span>
-                <span className="font-mono text-[#8587a8]">{active.name}</span>
+                <span className="font-mono text-[#c5c7dc]">{active.name}</span>
               </div>
             )}
 
@@ -531,13 +533,13 @@ export function Features() {
                 className="font-mono text-[10px] px-3 py-1.5 rounded-lg border transition-all"
                 style={{
                   borderColor: autoplay ? `${active.color}40` : '#2a2b40',
-                  color: autoplay ? active.color : '#565775',
+                  color: autoplay ? active.color : '#a8abc8',
                   background: autoplay ? `${active.color}08` : 'transparent',
                 }}
               >
                 {autoplay ? '⏸ pause tour' : '▶ play tour'}
               </button>
-              <span className="font-mono text-[9px] text-[#383960]">
+              <span className="font-mono text-[10px] text-[#8f92b8]">
                 {LAYERS.findIndex(l => l.num === activeLayer) + 1} / {LAYERS.length}
               </span>
             </div>
@@ -560,10 +562,10 @@ export function Features() {
 
         {/* Flywheel caption */}
         <div className="mt-16 text-center">
-          <p className="font-mono text-[11px] text-[#383960]">
+          <p className="font-mono text-xs text-[#a8abc8]">
             Read · Learn · Build · Compete · Connect · Agent · Work
           </p>
-          <p className="font-mono text-[10px] text-[#2a2b40] mt-1">The AI Work OS flywheel — every layer earns the next</p>
+          <p className="font-mono text-[11px] text-[#8589ad] mt-1">The AI Work OS flywheel — every layer earns the next</p>
         </div>
       </div>
     </section>

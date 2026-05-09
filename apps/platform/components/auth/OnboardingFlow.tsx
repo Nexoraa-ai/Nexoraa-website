@@ -62,7 +62,6 @@ interface OnboardingFlowProps {
 
 export function OnboardingFlow({ userId, userEmail }: OnboardingFlowProps) {
   const router = useRouter()
-  const supabase = createClient()
 
   const [step, setStep] = useState<Step>('welcome')
   const [displayName, setDisplayName] = useState(userEmail.split('@')[0])
@@ -88,6 +87,7 @@ export function OnboardingFlow({ userId, userEmail }: OnboardingFlowProps) {
 
   async function handleFinish() {
     setSaving(true)
+    const supabase = createClient()
     await supabase.from('user_profiles').upsert({
       id: userId,
       display_name: displayName.trim() || userEmail.split('@')[0],

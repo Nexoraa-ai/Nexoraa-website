@@ -98,7 +98,7 @@ export function HowItWorks() {
           <h2 className="text-[clamp(1.8rem,4vw,2.8rem)] font-extrabold tracking-tight text-[#e8e9f5] mb-3">
             One article. <span className="bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(95deg, #7c6df8, #00d4ff)' }}>Six stages.</span>
           </h2>
-          <p className="text-[#565775] text-[15px] max-w-xl mx-auto">
+          <p className="text-[#a8abc8] text-base max-w-xl mx-auto">
             See exactly what happens between a raw URL appearing on the web and it landing in your feed —
             without ever showing you a duplicate, raw article, or unsummarized junk.
           </p>
@@ -107,10 +107,10 @@ export function HowItWorks() {
         {/* Pipeline timeline */}
         <div className="relative mb-12">
           {/* Background line */}
-          <div className="absolute top-6 left-0 right-0 h-px bg-[#1e1f30]" />
+          <div className="absolute top-[3.35rem] left-0 right-0 h-px bg-[#25263a]" />
           {/* Active progress line */}
           <div
-            className="absolute top-6 left-0 h-px transition-all duration-700 ease-out"
+            className="absolute top-[3.35rem] left-0 h-px transition-all duration-700 ease-out"
             style={{
               width: `${(Math.min(activeStage, STAGES.length) / STAGES.length) * 100}%`,
               background: `linear-gradient(90deg, ${STAGES[0].color}, ${STAGES[Math.min(activeStage, STAGES.length - 1)].color})`,
@@ -127,7 +127,7 @@ export function HowItWorks() {
                 <button
                   key={stage.n}
                   onClick={() => { setActiveStage(i); setPlaying(false) }}
-                  className="flex flex-col items-center gap-3 group"
+                  className="flex flex-col items-center gap-4 group"
                 >
                   <div
                     className="relative w-12 h-12 rounded-full flex items-center justify-center text-base transition-all duration-500 border-2 z-10"
@@ -154,14 +154,14 @@ export function HowItWorks() {
                   </div>
                   <div className="text-center">
                     <div
-                      className="font-mono text-[9px] font-bold transition-colors"
-                      style={{ color: isPast || isCurrent ? stage.color : '#383960' }}
+                      className="font-mono text-[10px] font-bold transition-colors"
+                      style={{ color: isPast || isCurrent ? stage.color : '#8f92b8' }}
                     >
                       {stage.n}
                     </div>
                     <div
-                      className="text-[11px] font-semibold transition-colors"
-                      style={{ color: isCurrent ? '#e8e9f5' : isPast ? '#8587a8' : '#383960' }}
+                      className="text-xs font-semibold transition-colors"
+                      style={{ color: isCurrent ? '#ffffff' : isPast ? '#c5c7dc' : '#8f92b8' }}
                     >
                       {stage.label}
                     </div>
@@ -194,15 +194,15 @@ export function HowItWorks() {
                   </span>
                   <h3 className="text-lg font-bold text-[#e8e9f5]">{STAGES[activeStage].label}</h3>
                 </div>
-                <p className="text-[13px] text-[#8587a8] leading-relaxed mb-4 animate-fadein">
+                <p className="text-sm text-[#c5c7dc] leading-relaxed mb-4 animate-fadein">
                   {STAGES[activeStage].line}
                 </p>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="font-mono text-[9px] text-[#565775]">→</span>
-                  <span className="font-mono text-[10px] text-[#565775]">{STAGES[activeStage].shortDetail}</span>
+                  <span className="font-mono text-[10px] text-[#8f92b8]">→</span>
+                  <span className="font-mono text-[11px] text-[#a8abc8]">{STAGES[activeStage].shortDetail}</span>
                 </div>
                 <div className="flex items-center justify-between pt-3 border-t border-[#1e1f30]">
-                  <span className="font-mono text-[9px] text-[#565775]">cost / item</span>
+                  <span className="font-mono text-[10px] text-[#a8abc8]">cost / item</span>
                   <span
                     className="font-mono text-[10px] font-bold"
                     style={{ color: STAGES[activeStage].cost === '$0' ? '#35d97a' : STAGES[activeStage].color }}
@@ -223,11 +223,11 @@ export function HowItWorks() {
                   <span className="text-2xl">✓</span>
                   <h3 className="text-lg font-bold text-[#35d97a]">Pipeline complete</h3>
                 </div>
-                <p className="text-[13px] text-[#8587a8] leading-relaxed mb-3">
+                <p className="text-sm text-[#c5c7dc] leading-relaxed mb-3">
                   Total LLM cost: <span className="font-mono text-[#35d97a]">~$0.0097</span> per cluster.
                   Stories without complete summaries are <span className="text-[#e8e9f5] font-semibold">never</span> shown.
                 </p>
-                <p className="font-mono text-[10px] text-[#565775]">
+                <p className="font-mono text-[11px] text-[#a8abc8]">
                   At 25K MAU: <span className="text-[#35d97a]">$268/mo</span> vs naive $605
                 </p>
               </div>
@@ -237,14 +237,14 @@ export function HowItWorks() {
               onClick={() => setPlaying(v => !v)}
               className="w-full px-4 py-2.5 rounded-xl border border-[#2a2b40] hover:border-[#3a3b55] bg-[#0e0f18] transition-all flex items-center justify-center gap-2"
             >
-              <span className="font-mono text-[11px] text-[#8587a8]">
+              <span className="font-mono text-xs text-[#c5c7dc]">
                 {playing ? '⏸  pause animation' : '▶  replay pipeline'}
               </span>
             </button>
 
             <button
               onClick={() => { setActiveStage(0); setPlaying(true) }}
-              className="w-full px-4 py-2 rounded-xl text-center font-mono text-[10px] text-[#565775] hover:text-[#8587a8] transition-colors"
+              className="w-full px-4 py-2 rounded-xl text-center font-mono text-[11px] text-[#a8abc8] hover:text-[#e8e9f5] transition-colors"
             >
               ↻ start over
             </button>
@@ -257,7 +257,7 @@ export function HowItWorks() {
                 <div className="w-2 h-2 rounded-full bg-[#f74470]/60" />
                 <div className="w-2 h-2 rounded-full bg-[#f7a435]/60" />
                 <div className="w-2 h-2 rounded-full bg-[#35d97a]/60" />
-                <span className="ml-3 font-mono text-[10px] text-[#383960]">item.json — pipeline trace</span>
+                <span className="ml-3 font-mono text-[11px] text-[#a8abc8]">item.json — pipeline trace</span>
                 {!isComplete && (
                   <span className="ml-auto flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: STAGES[activeStage].color }} />
@@ -268,7 +268,7 @@ export function HowItWorks() {
                 )}
               </div>
 
-              <div className="p-5 space-y-2 font-mono text-[11px] leading-relaxed min-h-[280px]">
+              <div className="p-5 space-y-2 font-mono text-xs leading-relaxed min-h-[280px]">
                 <Field label="source_url" value={data.url} active={activeStage >= 0} color={STAGES[0].color} />
                 <Field label="title" value={data.title || '...'} active={activeStage >= 1} color={STAGES[0].color} />
                 <Field label="cluster_id" value={data.cluster} active={activeStage >= 2} color={STAGES[1].color} />
@@ -279,7 +279,7 @@ export function HowItWorks() {
                 {/* Final card */}
                 {isComplete && (
                   <div className="pt-2 mt-3 border-t border-[#1e1f30] animate-fadein">
-                    <p className="font-mono text-[9px] text-[#565775] mb-2">→ feed.tsx receives:</p>
+                    <p className="font-mono text-[10px] text-[#a8abc8] mb-2">→ feed.tsx receives:</p>
                     <div
                       className="rounded-xl border p-3 space-y-2"
                       style={{ borderColor: `${STAGES[5].color}30`, background: `${STAGES[5].color}05`, borderLeftWidth: 2 }}
@@ -294,7 +294,7 @@ export function HowItWorks() {
                       <p className="text-[12px] text-[#e8e9f5] font-semibold leading-snug font-sans">
                         OpenAI launches GPT-5 with 2× efficiency and 2M context window
                       </p>
-                      <p className="text-[10px] text-[#8587a8] leading-relaxed font-sans">
+                      <p className="text-[11px] text-[#c5c7dc] leading-relaxed font-sans">
                         GPT-5 ships with 2× throughput, 2M context, and 41% lower error rate on HumanEval...
                       </p>
                     </div>
@@ -309,7 +309,7 @@ export function HowItWorks() {
                 <span className="text-[#35d97a] text-base">🛡️</span>
                 <div className="flex-1">
                   <p className="text-[12px] font-semibold text-[#e8e9f5]">Quality gate: <code className="font-mono text-[10px] text-[#35d97a]">summary IS NOT NULL</code></p>
-                  <p className="text-[10px] text-[#565775]">
+                  <p className="text-[11px] text-[#a8abc8]">
                     Items missing any pipeline stage are silently archived — they never reach your feed.
                   </p>
                 </div>
@@ -342,14 +342,14 @@ function Field({
       className="flex items-start gap-3 transition-all duration-500"
       style={{ opacity: active ? 1 : 0.3 }}
     >
-      <span className="text-[#565775] w-32 shrink-0">{label}:</span>
+      <span className="text-[#a8abc8] w-32 shrink-0">{label}:</span>
       <span
         className={[
           'flex-1 transition-colors duration-300',
           truncate ? 'truncate' : '',
         ].join(' ')}
         style={{
-          color: !active ? '#2a2b40' : highlight ? '#35d97a' : value === '?' || value === '...' ? '#565775' : color,
+          color: !active ? '#515476' : highlight ? '#35d97a' : value === '?' || value === '...' ? '#a8abc8' : color,
           fontWeight: highlight ? 700 : 400,
         }}
       >
